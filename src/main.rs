@@ -50,21 +50,20 @@ enum Commands {
     },
     /// Scan Cake Wallet vulnerability with RPC balance checking
     CakeWalletRpc {
-        #[arg(long, default_value = "http://100.115.168.104:8332")]
+        #[arg(long, env = "RPC_URL", default_value = "http://localhost:8332")]
         rpc_url: String,
-        #[arg(long, default_value = "bitcoinrpc")]
+        #[arg(long, env = "RPC_USER", default_value = "bitcoinrpc")]
         rpc_user: String,
-        #[arg(long, default_value = "madmad13221")]
+        #[arg(long, env = "RPC_PASS")]
         rpc_pass: String,
     },
     /// Scan Android SecureRandom vulnerability (duplicate R values)
     AndroidSecureRandom {
-        #[arg(long, default_value = "http://100.115.168.104:8332")]
+        #[arg(long, env = "RPC_URL", default_value = "http://localhost:8332")]
         rpc_url: String,
-        #[arg(long, default_value = "bitcoinrpc")]
+        #[arg(long, env = "RPC_USER", default_value = "bitcoinrpc")]
         rpc_user: String,
-
-        #[arg(long, default_value = "madmad13221")]
+        #[arg(long, env = "RPC_PASS")]
         rpc_pass: String,
         #[arg(long, default_value = "302000")]
         start_block: u64,

