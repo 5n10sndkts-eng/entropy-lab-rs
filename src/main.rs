@@ -1,7 +1,6 @@
 use clap::{Parser, Subcommand};
 use anyhow::Result;
-
-mod scans;
+use entropy_lab_rs::scans;
 
 #[derive(Parser)]
 #[command(name = "entropy-lab")]

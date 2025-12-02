@@ -1,7 +1,5 @@
 use anyhow::{Result, Context};
 use crate::scans::gpu_solver::GpuSolver;
-use bitcoin::Address;
-use std::str::FromStr;
 use hex;
 
 /// Profanity Vanity Address Vulnerability Scanner
@@ -26,7 +24,7 @@ pub fn run(target: Option<String>) -> Result<()> {
     
     // Search space: 0 to 2^32
     let total_seeds = 4_294_967_296u64;
-    let batch_size = 10_000_000; // 10M per batch
+    let _batch_size = 10_000_000; // 10M per batch
     
     println!("Scanning {} seeds...", total_seeds);
     

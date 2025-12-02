@@ -1,8 +1,6 @@
 use anyhow::Result;
 use crate::scans::gpu_solver::GpuSolver;
 use bip39::Mnemonic;
-use sha2::{Sha256, Digest};
-use std::collections::HashSet;
 use std::fs;
 use hex;
 
