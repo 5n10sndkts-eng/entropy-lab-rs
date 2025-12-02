@@ -54,7 +54,7 @@ enum Commands {
         rpc_url: String,
         #[arg(long, env = "RPC_USER", default_value = "bitcoinrpc")]
         rpc_user: String,
-        #[arg(long, env = "RPC_PASS")]
+        #[arg(long, env = "RPC_PASS", required = true)]
         rpc_pass: String,
     },
     /// Scan Android SecureRandom vulnerability (duplicate R values)
@@ -63,7 +63,7 @@ enum Commands {
         rpc_url: String,
         #[arg(long, env = "RPC_USER", default_value = "bitcoinrpc")]
         rpc_user: String,
-        #[arg(long, env = "RPC_PASS")]
+        #[arg(long, env = "RPC_PASS", required = true)]
         rpc_pass: String,
         #[arg(long, default_value = "302000")]
         start_block: u64,

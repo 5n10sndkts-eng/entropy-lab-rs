@@ -11,7 +11,13 @@ const SECP256K1_N: &str = "FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25
 /// Extract r and s values from a DER signature
 #[allow(dead_code)]
 fn parse_der_signature(sig_bytes: &[u8]) -> Option<(Vec<u8>, Vec<u8>)> {
-    if sig_bytes.len() < 6 || sig_bytes[0] != 0x30 || sig_bytes[2] != 0x02 {
+    // Minimum DER signature: 0x30 [len] 0x02 [r-len] [r] 0x02 [s-len] [s]
+    if sig_bytes.len() < 8 || sig_bytes[0] != 0x30 {
+        return None;
+    }
+    
+    let total_len = sig_bytes[1] as usize;
+    if sig_bytes.len() != total_len + 2 || sig_bytes[2] != 0x02 {
         return None;
     }
     
@@ -91,15 +97,15 @@ fn recover_private_key(
     let m2_int = BigInt::from_bytes_be(num_bigint::Sign::Plus, m2);
     
     // Calculate k = (m1 - m2) / (s1 - s2) mod n
-    let m_diff = (m1_int.clone() - m2_int.clone()).modpow(&BigInt::one(), &n);
-    let s_diff = (s1_int.clone() - s2_int).modpow(&BigInt::one(), &n);
+    let m_diff = (&m1_int - &m2_int) % &n;
+    let s_diff = (&s1_int - &s2_int) % &n;
     let s_diff_inv = mod_inverse(&s_diff, &n)?;
-    let k = (m_diff * s_diff_inv).modpow(&BigInt::one(), &n);
+    let k = (&m_diff * &s_diff_inv) % &n;
     
     // Calculate private_key = (s1 * k - m1) / r mod n
-    let numerator = (s1_int * k - m1_int).modpow(&BigInt::one(), &n);
+    let numerator = (&s1_int * &k - &m1_int) % &n;
     let r_inv = mod_inverse(&r_int, &n)?;
-    let private_key = (numerator * r_inv).modpow(&BigInt::one(), &n);
+    let private_key = (&numerator * &r_inv) % &n;
     
     // Convert to 32-byte array
     let (_sign, bytes) = private_key.to_bytes_be();

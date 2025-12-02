@@ -164,10 +164,13 @@ This software is provided for educational and research purposes only. Users are 
 
 ## References
 
-- [Cake Wallet Vulnerability Report](https://example.com)
-- [Trust Wallet MT19937 Analysis](https://example.com)
-- [Libbitcoin "Milk Sad" Disclosure](https://example.com)
-- [Android SecureRandom Issues](https://example.com)
+For more information about the vulnerabilities addressed by this tool:
+
+- Cake Wallet Vulnerability (2024)
+- Trust Wallet MT19937 Analysis (2023)
+- Libbitcoin "Milk Sad" Disclosure (2023)
+- Android SecureRandom Issues (CVE-2013-7372)
+- Profanity Vanity Address Vulnerability
 
 ## Support
 
