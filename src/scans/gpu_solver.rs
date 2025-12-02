@@ -84,8 +84,10 @@ impl GpuSolver {
         let mut entropies_lo = Vec::with_capacity(batch_size);
 
         for ent in entropies {
-            let hi = u64::from_le_bytes(ent[8..16].try_into().unwrap());
-            let lo = u64::from_le_bytes(ent[0..8].try_into().unwrap());
+            let hi = u64::from_le_bytes(ent[8..16].try_into()
+                .expect("Entropy should always be 16 bytes"));
+            let lo = u64::from_le_bytes(ent[0..8].try_into()
+                .expect("Entropy should always be 16 bytes"));
             entropies_hi.push(hi);
             entropies_lo.push(lo);
         }

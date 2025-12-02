@@ -1,6 +1,44 @@
+# Rust
 /target
+Cargo.lock
+
+# Build artifacts
+*.o
+*.so
+*.dylib
+*.dll
+*.a
+*.lib
+
+# Output files
 *.csv
 *.log
-__pycache__/
 *.txt
 !cakewallet_vulnerable_hashes.txt
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Environment variables
+.env
+.env.local
+
+# Test outputs
+android_securerandom_hits.txt
+hits.txt
+results/

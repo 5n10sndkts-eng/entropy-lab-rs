@@ -118,16 +118,20 @@ fn generate_milk_sad_entropy(timestamp: u32) -> [u8; 16] {
 
 /// Generate Bitcoin address from entropy using BIP39/BIP44
 fn generate_address_from_entropy(entropy: &[u8; 16], addr_index: u32) -> String {
-    let mnemonic = Mnemonic::from_entropy(entropy).unwrap();
+    let mnemonic = Mnemonic::from_entropy(entropy)
+        .expect("Failed to create mnemonic from entropy - this should not happen with valid 16-byte entropy");
     let seed = mnemonic.to_seed("");
     
     let secp = Secp256k1::new();
-    let root = Xpriv::new_master(Network::Bitcoin, &seed).unwrap();
+    let root = Xpriv::new_master(Network::Bitcoin, &seed)
+        .expect("Failed to create master key from seed");
     
     // Path: m/44'/0'/0'/0/i
     let path_str = format!("m/44'/0'/0'/0/{}", addr_index);
-    let path = DerivationPath::from_str(&path_str).unwrap();
-    let derived = root.derive_priv(&secp, &path).unwrap();
+    let path = DerivationPath::from_str(&path_str)
+        .expect("Failed to parse derivation path - hardcoded path should be valid");
+    let derived = root.derive_priv(&secp, &path)
+        .expect("Failed to derive child key");
     
     let private_key = bitcoin::PrivateKey::new(derived.private_key, Network::Bitcoin);
     let pubkey = private_key.public_key(&secp);

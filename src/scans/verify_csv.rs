@@ -126,7 +126,8 @@ pub fn run(csv_path: &str, address_list_path: &str) -> Result<()> {
     }
     println!("");
 
-    let potential_hits = hits.lock().unwrap();
+    let potential_hits = hits.lock()
+        .expect("Failed to lock hits mutex - this indicates a critical threading issue");
     println!("Scan complete. Found {} potential hits (Bloom filter matches).", potential_hits.len());
 
     if potential_hits.is_empty() {
@@ -236,7 +237,8 @@ fn process_batch(batch: &[CsvRow], bloom: &BloomFilter, secp: &Secp256k1<bitcoin
     }).collect::<Vec<_>>();
 
     if !batch_hits.is_empty() {
-        let mut global_hits = hits.lock().unwrap();
+        let mut global_hits = hits.lock()
+            .expect("Failed to lock hits mutex - this indicates a critical threading issue");
         global_hits.extend(batch_hits);
     }
 
