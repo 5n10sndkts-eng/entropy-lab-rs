@@ -81,9 +81,11 @@ enum Commands {
     },
 }
 
+const DEFAULT_RPC_URL: &str = "http://127.0.0.1:8332";
+
 /// Helper function to get RPC credentials with environment variable fallback
 fn get_rpc_credentials(url: String, user: String, pass: String) -> Result<(String, String, String)> {
-    let final_url = if url == "http://127.0.0.1:8332" {
+    let final_url = if url == DEFAULT_RPC_URL {
         std::env::var("RPC_URL").unwrap_or(url)
     } else {
         url

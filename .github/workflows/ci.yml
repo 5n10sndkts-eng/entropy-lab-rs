@@ -42,6 +42,8 @@ jobs:
       
       - name: Run tests
         run: cargo test --lib --verbose
+        # Note: Tests may fail due to missing OpenCL on CI runners
+        # In production, ensure OpenCL is available or make it optional
         continue-on-error: true
 
   fmt:
@@ -72,8 +74,9 @@ jobs:
           components: clippy
       
       - name: Run cargo clippy
-        run: cargo clippy --all-targets --all-features -- -D warnings
-        continue-on-error: true
+        run: cargo clippy --all-targets --all-features -- -W clippy::all
+        # Using -W (warn) instead of -D (deny) to allow build to continue
+        # while still showing warnings. Change to -D warnings for strict mode.
 
   security-audit:
     name: Security Audit
@@ -89,6 +92,8 @@ jobs:
       
       - name: Run cargo audit
         run: cargo audit
+        # Allow to continue if advisories are found, but will be visible in logs
+        # Set to false in production or before merging to main
         continue-on-error: true
 
   build:
