@@ -1,18 +1,17 @@
 use anyhow::{Context, Result};
-use bip39::{Mnemonic, Language};
+use bip39::{Language, Mnemonic};
+use bitcoin::bip32::{DerivationPath, Xpriv};
 use bitcoin::secp256k1::Secp256k1;
-use bitcoin::{Network, CompressedPublicKey, Address};
-use bitcoin::bip32::{Xpriv, DerivationPath};
-
+use bitcoin::{Address, CompressedPublicKey, Network};
 
 use bloom::{BloomFilter, ASMS};
 use rayon::prelude::*;
+use std::collections::HashSet;
 use std::fs::File;
-use std::io::{Write, BufReader, BufRead};
+use std::io::{BufRead, BufReader, Write};
+use std::str::FromStr;
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
-use std::str::FromStr;
-use std::collections::HashSet;
 
 struct Hit {
     timestamp: u64,
@@ -37,13 +36,13 @@ struct CsvRow {
 pub fn run(csv_path: &str, address_list_path: &str) -> Result<()> {
     println!("Loading funded addresses from '{}'...", address_list_path);
     let file = File::open(address_list_path).context("Failed to open address list")?;
-    
+
     let reader: Box<dyn BufRead> = if address_list_path.ends_with(".gz") {
         Box::new(BufReader::new(GzDecoder::new(file)))
     } else {
         Box::new(BufReader::new(file))
     };
-    
+
     // Bloom filter setup
     let expected_items = 60_000_000;
     let rate = 0.000001;
@@ -77,8 +76,8 @@ pub fn run(csv_path: &str, address_list_path: &str) -> Result<()> {
 
     let secp = Secp256k1::new();
     // Store potential hits in memory first (Address -> Mnemonic/Info)
-    // We store the full CSV line info as a formatted string for easy retrieval later, 
-    // or just store the address and map it back? 
+    // We store the full CSV line info as a formatted string for easy retrieval later,
+    // or just store the address and map it back?
     // Storing "Address" -> "CSV Row Info" allows us to output the CSV row later.
     // But we might have multiple hits for one address? Unlikely for this use case.
     // Let's store "Address" -> "Full CSV Line String"
@@ -94,7 +93,7 @@ pub fn run(csv_path: &str, address_list_path: &str) -> Result<()> {
     // 2. After scan -> If list not empty -> Create HashSet of Addresses from list.
     // 3. Scan Address File -> If address in HashSet -> Mark as Confirmed.
     // 4. Filter list for Confirmed addresses -> Write to file.
-    
+
     let hits: Arc<Mutex<Vec<Hit>>> = Arc::new(Mutex::new(Vec::new()));
 
     println!("Starting verification...");
@@ -113,22 +112,27 @@ pub fn run(csv_path: &str, address_list_path: &str) -> Result<()> {
             total_processed += batch.len() as u64;
             let elapsed = start.elapsed().as_secs_f64();
             let speed = total_processed as f64 / elapsed;
-            print!("\rProcessed {} addresses... (Speed: {:.2} rows/sec, Time: {:.0}s)", total_processed, speed, elapsed);
+            print!(
+                "\rProcessed {} addresses... (Speed: {:.2} rows/sec, Time: {:.0}s)",
+                total_processed, speed, elapsed
+            );
             std::io::stdout().flush()?;
             batch.clear();
         }
-
     }
-
 
     if !batch.is_empty() {
         process_batch(&batch, &bloom, &secp, &hits)?;
     }
-    println!("");
+    println!();
 
-    let potential_hits = hits.lock()
+    let potential_hits = hits
+        .lock()
         .expect("Failed to lock hits mutex - this indicates a critical threading issue");
-    println!("Scan complete. Found {} potential hits (Bloom filter matches).", potential_hits.len());
+    println!(
+        "Scan complete. Found {} potential hits (Bloom filter matches).",
+        potential_hits.len()
+    );
 
     if potential_hits.is_empty() {
         println!("No hits found. Exiting.");
@@ -136,13 +140,15 @@ pub fn run(csv_path: &str, address_list_path: &str) -> Result<()> {
     }
 
     println!("Verifying potential hits against exact address list...");
-    
+
     // Build a HashSet of the potential addresses for O(1) lookup
-    let potential_addr_set: HashSet<String> = potential_hits.iter().map(|h| h.address.clone()).collect();
+    let potential_addr_set: HashSet<String> =
+        potential_hits.iter().map(|h| h.address.clone()).collect();
     let mut confirmed_addresses = HashSet::new();
 
     // Re-read address list
-    let file = File::open(address_list_path).context("Failed to open address list for verification")?;
+    let file =
+        File::open(address_list_path).context("Failed to open address list for verification")?;
     let reader: Box<dyn BufRead> = if address_list_path.ends_with(".gz") {
         Box::new(BufReader::new(GzDecoder::new(file)))
     } else {
@@ -165,14 +171,19 @@ pub fn run(csv_path: &str, address_list_path: &str) -> Result<()> {
         }
     }
 
-    println!("Verification complete. Confirmed {} valid hits.", confirmed_addresses.len());
+    println!(
+        "Verification complete. Confirmed {} valid hits.",
+        confirmed_addresses.len()
+    );
 
     if !confirmed_addresses.is_empty() {
         let mut file = File::create("verified_hits.csv")?;
         writeln!(file, "Timestamp_MS,Seed_u32,Mnemonic,Address,Type")?;
         for hit in potential_hits.iter() {
             if confirmed_addresses.contains(&hit.address) {
-                writeln!(file, "{},{},{},{},{}", 
+                writeln!(
+                    file,
+                    "{},{},{},{},{}",
                     hit.timestamp, hit.seed, hit.mnemonic, hit.address, hit.deriv_type
                 )?;
             }
@@ -185,64 +196,70 @@ pub fn run(csv_path: &str, address_list_path: &str) -> Result<()> {
     Ok(())
 }
 
-fn process_batch(batch: &[CsvRow], bloom: &BloomFilter, secp: &Secp256k1<bitcoin::secp256k1::All>, hits: &Arc<Mutex<Vec<Hit>>>) -> Result<()> {
+fn process_batch(
+    batch: &[CsvRow],
+    bloom: &BloomFilter,
+    secp: &Secp256k1<bitcoin::secp256k1::All>,
+    hits: &Arc<Mutex<Vec<Hit>>>,
+) -> Result<()> {
     // Thread-local storage for hits to reduce mutex contention
-    let batch_hits = batch.par_iter().flat_map(|row| {
-        let mut local_hits = Vec::new();
-        if let Ok(mnemonic) = Mnemonic::parse_in(Language::English, &row.mnemonic) {
-            let seed = mnemonic.to_seed("");
-            if let Ok(root) = Xpriv::new_master(Network::Bitcoin, &seed) {
+    let batch_hits = batch
+        .par_iter()
+        .flat_map(|row| {
+            let mut local_hits = Vec::new();
+            if let Ok(mnemonic) = Mnemonic::parse_in(Language::English, &row.mnemonic) {
+                let seed = mnemonic.to_seed("");
+                if let Ok(root) = Xpriv::new_master(Network::Bitcoin, &seed) {
+                    let paths = [
+                        ("m/44'/0'/0'/0/0", "Legacy"),
+                        ("m/84'/0'/0'/0/0", "SegWit"),
+                        ("m/49'/0'/0'/0/0", "Nested SegWit"),
+                        ("m/86'/0'/0'/0/0", "Taproot"),
+                    ];
 
-                let paths = [
-                    ("m/44'/0'/0'/0/0", "Legacy"),
-                    ("m/84'/0'/0'/0/0", "SegWit"),
-                    ("m/49'/0'/0'/0/0", "Nested SegWit"),
-                    ("m/86'/0'/0'/0/0", "Taproot"),
-                ];
+                    for (base_path_str, type_name) in paths {
+                        if let Ok(path) = DerivationPath::from_str(base_path_str) {
+                            if let Ok(child) = root.derive_priv(secp, &path) {
+                                let pubkey = child.private_key.public_key(secp);
+                                let compressed_pk = CompressedPublicKey(pubkey);
 
-                for (base_path_str, type_name) in paths {
-                    if let Ok(path) = DerivationPath::from_str(base_path_str) {
-                        if let Ok(child) = root.derive_priv(secp, &path) {
-                            let pubkey = child.private_key.public_key(secp);
-                            let compressed_pk = CompressedPublicKey(pubkey);
-                            
-                            let address = match type_name {
-                                "Legacy" => Address::p2pkh(&compressed_pk, Network::Bitcoin),
-                                "SegWit" => Address::p2wpkh(&compressed_pk, Network::Bitcoin),
-                                "Nested SegWit" => Address::p2shwpkh(&compressed_pk, Network::Bitcoin),
-                                "Taproot" => {
-                                    let (x_only, _parity) = pubkey.x_only_public_key();
-                                    Address::p2tr(secp, x_only, None, Network::Bitcoin)
-                                },
-                                _ => continue,
-                            };
-                            
-                            if bloom.contains(&address.to_string().as_bytes()) {
-                                local_hits.push(Hit {
-                                    timestamp: row.timestamp_ms,
-                                    seed: row.seed_u32,
-                                    mnemonic: row.mnemonic.clone(),
-                                    address: address.to_string(),
-                                    deriv_type: type_name.to_string(),
-                                });
+                                let address = match type_name {
+                                    "Legacy" => Address::p2pkh(compressed_pk, Network::Bitcoin),
+                                    "SegWit" => Address::p2wpkh(&compressed_pk, Network::Bitcoin),
+                                    "Nested SegWit" => {
+                                        Address::p2shwpkh(&compressed_pk, Network::Bitcoin)
+                                    }
+                                    "Taproot" => {
+                                        let (x_only, _parity) = pubkey.x_only_public_key();
+                                        Address::p2tr(secp, x_only, None, Network::Bitcoin)
+                                    }
+                                    _ => continue,
+                                };
+
+                                if bloom.contains(&address.to_string().as_bytes()) {
+                                    local_hits.push(Hit {
+                                        timestamp: row.timestamp_ms,
+                                        seed: row.seed_u32,
+                                        mnemonic: row.mnemonic.clone(),
+                                        address: address.to_string(),
+                                        deriv_type: type_name.to_string(),
+                                    });
+                                }
                             }
                         }
                     }
                 }
-
-
             }
-        }
-        local_hits
-    }).collect::<Vec<_>>();
+            local_hits
+        })
+        .collect::<Vec<_>>();
 
     if !batch_hits.is_empty() {
-        let mut global_hits = hits.lock()
+        let mut global_hits = hits
+            .lock()
             .expect("Failed to lock hits mutex - this indicates a critical threading issue");
         global_hits.extend(batch_hits);
     }
 
     Ok(())
 }
-
-
