@@ -1,0 +1,6 @@
+/target
+*.csv
+*.log
+__pycache__/
+*.txt
+!cakewallet_vulnerable_hashes.txt
