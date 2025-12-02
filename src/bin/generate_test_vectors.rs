@@ -4,10 +4,9 @@
 use bip39::Mnemonic;
 use bitcoin::secp256k1::Secp256k1;
 use bitcoin::bip32::{Xpriv, DerivationPath};  // v0.32 uses Xpriv
-use bitcoin::{Network, Address, PublicKey};
+use bitcoin::{Network, Address};
 use std::str::FromStr;
 use rand_mt::Mt19937GenRand32;
-use rand::Rng;  // Required for next_u32()
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("=== GPU BIP39 Accuracy Validation ===\n");

@@ -1,7 +1,4 @@
 use ocl::{ProQue, Buffer, MemFlags};
-use ocl::flags;
-use std::ffi::CString;
-use hex;
 
 pub struct GpuSolver {
     pro_que: ProQue,
@@ -11,7 +8,7 @@ pub struct GpuSolver {
 impl GpuSolver {
     pub fn new() -> ocl::Result<Self> {
         eprintln!("[GPU] Initializing GPU solver...");
-        let src = include_str!("../../cl/batch_address.cl");
+        let _src = include_str!("../../cl/batch_address.cl");
         
         let files = [
             "common", "ripemd", "sha2", "sha512", "secp256k1_common", "secp256k1_scalar", 

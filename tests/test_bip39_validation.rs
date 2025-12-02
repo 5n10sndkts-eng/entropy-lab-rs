@@ -4,10 +4,9 @@
 use bip39::Mnemonic;
 use bitcoin::secp256k1::Secp256k1;
 use bitcoin::bip32::{Xpriv, DerivationPath};  // v0.32 uses Xpriv instead of ExtendedPrivKey
-use bitcoin::{Network, Address, PublicKey};
+use bitcoin::{Network, Address};
 use std::str::FromStr;
 use rand_mt::Mt19937GenRand32;
-use rand::{Rng, SeedableRng};  // Required for Mt19937GenRand32
 
 /// Generate 128-bit entropy using MT19937 with MSB extraction (Milk Sad vulnerability)
 fn generate_milk_sad_entropy(timestamp: u32) -> [u8; 16] {

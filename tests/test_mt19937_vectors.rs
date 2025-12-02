@@ -2,7 +2,6 @@
 // Generated using rand_mt::Mt19937GenRand32 with MSB extraction
 
 use rand_mt::Mt19937GenRand32;
-use rand::{Rng, SeedableRng};
 
 #[test]
 fn test_mt19937_reference_vectors() {
@@ -39,7 +38,7 @@ fn test_mt19937_reference_vectors() {
 #[test]  
 fn test_gpu_mt19937_if_available() {
     // This test requires GPU - skip if not available
-    use crate::scans::gpu_solver::GpuSolver;
+    use entropy_lab_rs::scans::gpu_solver::GpuSolver;
     
     let solver = match GpuSolver::new() {
         Ok(s) => s,

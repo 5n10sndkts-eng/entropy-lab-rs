@@ -3,7 +3,6 @@ use crate::scans::gpu_solver::GpuSolver;
 use bitcoin::{Address, Network};
 use bitcoin::secp256k1::{Secp256k1, SecretKey};
 use bitcoin::hashes::{Hash, sha256};
-use std::str::FromStr;
 use hex;
 
 /// Simulates a "Malicious Extension" Address Poisoning Attack (GPU Accelerated)

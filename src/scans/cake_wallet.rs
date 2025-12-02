@@ -1,12 +1,16 @@
 use anyhow::Result;
-use bitcoin::bip32::{DerivationPath, Xpriv};
-use bitcoin::secp256k1::Secp256k1;
-use bitcoin::{Network, Address};
-use bip39::Mnemonic;
-
-use std::str::FromStr;
 use hex; // Added for hex::encode
-use crate::scans::gpu_solver::GpuSolver; // Added for GpuSolver
+
+#[cfg(test)]
+use bitcoin::bip32::{DerivationPath, Xpriv};
+#[cfg(test)]
+use bitcoin::secp256k1::Secp256k1;
+#[cfg(test)]
+use bitcoin::{Network, Address};
+#[cfg(test)]
+use bip39::Mnemonic;
+#[cfg(test)]
+use std::str::FromStr;
 
 /// Simulates the Cake Wallet vulnerability by generating wallets from a limited entropy source.
 /// The vulnerability was due to a weak PRNG with effectively 20 bits of entropy.

@@ -2,7 +2,7 @@ use anyhow::{Context, Result};
 use bip39::{Mnemonic, Language};
 use bitcoin::secp256k1::Secp256k1;
 use bitcoin::{Network, CompressedPublicKey, Address};
-use bitcoin::bip32::{ExtendedPrivKey, DerivationPath};
+use bitcoin::bip32::{Xpriv, DerivationPath};
 
 
 use bloom::{BloomFilter, ASMS};
@@ -190,10 +190,7 @@ fn process_batch(batch: &[CsvRow], bloom: &BloomFilter, secp: &Secp256k1<bitcoin
         let mut local_hits = Vec::new();
         if let Ok(mnemonic) = Mnemonic::parse_in(Language::English, &row.mnemonic) {
             let seed = mnemonic.to_seed("");
-            if let Ok(root) = ExtendedPrivKey::new_master(Network::Bitcoin, &seed) {
-use bitcoin::bip32::{ExtendedPrivKey, DerivationPath, ChildNumber};
-
-// ... inside process_batch ...
+            if let Ok(root) = Xpriv::new_master(Network::Bitcoin, &seed) {
 
                 let paths = [
                     ("m/44'/0'/0'/0/0", "Legacy"),

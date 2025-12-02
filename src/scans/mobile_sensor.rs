@@ -2,9 +2,8 @@ use anyhow::Result;
 use crate::scans::gpu_solver::GpuSolver;
 use bitcoin::{Address, Network};
 use bitcoin::secp256k1::{Secp256k1, SecretKey};
-use bitcoin::hashes::{Hash, sha256, hash160};
-use rand::{Rng, SeedableRng};
-use rand_chacha::ChaCha20Rng;
+use bitcoin::hashes::{Hash, sha256};
+use rand::Rng;
 use std::str::FromStr;
 use hex;
 
@@ -50,7 +49,7 @@ pub fn run(target: Option<String>) -> Result<()> {
             let range = 201;
             let z_idx = gid % range as u64;
             let y_idx = (gid / range as u64) % range as u64;
-            let x_idx = (gid / (range as u64 * range as u64));
+            let x_idx = gid / (range as u64 * range as u64);
             
             let acc_x = x_idx as i32 - 100;
             let acc_y = y_idx as i32 - 100;

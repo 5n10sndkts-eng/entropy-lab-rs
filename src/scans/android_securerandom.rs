@@ -1,10 +1,7 @@
-use anyhow::{Result, Context};
+use anyhow::Result;
 use bitcoincore_rpc::{Auth, Client, RpcApi};
-use bitcoin::secp256k1::{Secp256k1, SecretKey, Message};
-use bitcoin::{Transaction, Address};
 use std::collections::HashMap;
 use std::io::Write;
-use bitcoin::hashes::Hash;
 
 
 /// Scanner for Android SecureRandom vulnerability (CVE-2013-7372)
@@ -67,7 +64,7 @@ pub fn run(rpc_url: &str, rpc_user: &str, rpc_pass: &str, start_block: u64, end_
             transactions_scanned += 1;
 
             // Extract signatures from inputs
-            for (input_idx, input) in tx.input.iter().enumerate() {
+            for (_input_idx, input) in tx.input.iter().enumerate() {
                 // Try to extract DER signature from scriptSig
                 let script_bytes = input.script_sig.as_bytes();
                 
