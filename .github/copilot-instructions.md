@@ -13,12 +13,16 @@ entropy-lab-rs/
 │   ├── lib.rs               # Library exports
 │   ├── scans/               # Scanner implementations for various vulnerabilities
 │   │   ├── cake_wallet.rs
+│   │   ├── cake_wallet_dart_prng.rs
+│   │   ├── cake_wallet_rpc.rs
+│   │   ├── cake_wallet_targeted.rs
 │   │   ├── trust_wallet.rs
 │   │   ├── milk_sad.rs
 │   │   ├── android_securerandom.rs
 │   │   ├── profanity.rs
 │   │   ├── mobile_sensor.rs
 │   │   ├── malicious_extension.rs
+│   │   ├── verify_csv.rs
 │   │   └── gpu_solver.rs    # OpenCL GPU acceleration
 │   └── bin/                 # Additional binaries (benchmarks, test vector generation)
 ├── tests/                   # Integration tests
@@ -42,8 +46,9 @@ entropy-lab-rs/
 - Follow standard Rust naming conventions (snake_case for functions/variables, CamelCase for types)
 
 ### Linting
-- Run `cargo clippy -- -D warnings` before committing
-- Address all clippy warnings (CI uses `-W clippy::all`)
+- Run `cargo clippy -- -D warnings` before committing to catch all issues locally
+- CI uses `-W clippy::all` which reports warnings without blocking the build
+- Strive to address all clippy warnings, though they are not strictly blocking in CI
 - Prefer using `Result` and `?` operator over `unwrap()`/`expect()`
 
 ### Error Handling
