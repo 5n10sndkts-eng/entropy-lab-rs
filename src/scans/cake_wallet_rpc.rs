@@ -154,17 +154,19 @@ pub fn run(rpc_url: &str, rpc_user: &str, rpc_pass: &str) -> Result<()> {
 }
 
 /// Decode GPU address format to Bitcoin address string
+/// GPU returns addresses as base58-encoded strings in a 25-byte buffer
 fn decode_address_from_gpu(addr_bytes: &[u8; 25], _addr_type: &str, _network: Network) -> Result<String> {
-    // GPU returns addresses in base58 format (25 bytes)
-    // First byte is version, next 20 bytes are hash160, last 4 bytes are checksum
-    // For now, convert to hex and use bitcoin library
-    // TODO: Implement proper base58 decoding if needed
-    
-    // Simple approach: Use the GPU-generated address directly if it's in the right format
-    // The GPU kernels already output proper Bitcoin addresses
+    // GPU kernels output base58-encoded addresses as null-terminated strings
+    // The 25-byte buffer contains the ASCII string representation
+    // Find the null terminator and convert to string
     let addr_str = std::str::from_utf8(addr_bytes)
         .unwrap_or("")
         .trim_end_matches('\0');
+    
+    // Validate it's not empty
+    if addr_str.is_empty() {
+        return Err(anyhow::anyhow!("GPU returned empty address"));
+    }
     
     Ok(addr_str.to_string())
 }

@@ -13,8 +13,6 @@ use std::str::FromStr;
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
-use crate::scans::gpu_solver::GpuSolver;
-
 struct Hit {
     timestamp: u64,
     seed: u32,
