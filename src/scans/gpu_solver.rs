@@ -820,18 +820,18 @@ impl GpuSolver {
 
         let buffer_seeds = Buffer::builder()
             .queue(self.pro_que.queue().clone())
-            .flags(MemFlags::new().read_only().copy_host_ptr())
+            .flags(MemFlags::new().read_only().alloc_host_ptr().copy_host_ptr())
             .len(count)
             .copy_host_slice(seeds)
             .build()?;
 
         let buffer_results = Buffer::<u8>::builder()
             .queue(self.pro_que.queue().clone())
-            .flags(MemFlags::new().write_only())
+            .flags(MemFlags::new().write_only().alloc_host_ptr())
             .len(count * 16)
             .build()?;
 
-        let local_work_size = Self::calculate_local_work_size(count);
+        let local_work_size = self.calculate_local_work_size(count);
 
         let kernel = self
             .pro_que
@@ -858,6 +858,38 @@ impl GpuSolver {
         }
 
         Ok(results)
+    }
+    
+    /// Get GPU device information for debugging and profiling
+    pub fn device_info(&self) -> ocl::Result<String> {
+        let device = self.pro_que.device();
+        let name = device.name()?;
+        let vendor = device.vendor()?;
+        let version = device.version()?;
+        let driver = device.driver_version()?;
+        let compute_units = device.max_compute_units()?;
+        let clock_freq = device.max_clock_frequency()?;
+        let global_mem = device.global_mem_size()? / (1024 * 1024); // MB
+        let local_mem = device.local_mem_size()? / 1024; // KB
+        let max_alloc = device.max_mem_alloc_size()? / (1024 * 1024); // MB
+        
+        Ok(format!(
+            "GPU Device Information:\n\
+             Name: {}\n\
+             Vendor: {}\n\
+             Version: {}\n\
+             Driver: {}\n\
+             Compute Units: {}\n\
+             Clock Frequency: {} MHz\n\
+             Global Memory: {} MB\n\
+             Local Memory: {} KB\n\
+             Max Allocation: {} MB\n\
+             Max Work Group Size: {}\n\
+             Preferred Multiple: {}",
+            name, vendor, version, driver,
+            compute_units, clock_freq, global_mem, local_mem, max_alloc,
+            self.max_work_group_size, self.preferred_work_group_multiple
+        ))
     }
 }
 

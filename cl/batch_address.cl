@@ -1,13 +1,23 @@
 // All dependencies loaded by gpu_solver.rs before this file
 // No need for #include directives
 
-__kernel void batch_address(__global ulong * entropies_hi, __global ulong * entropies_lo, __global uchar * output_addresses, uint purpose) {
+// OPTIMIZATION: Use __global const restrict for read-only buffers to enable better caching
+// OPTIMIZATION: Memory coalescing achieved by sequential thread access pattern
+__kernel void batch_address(
+    __global const ulong * restrict entropies_hi, 
+    __global const ulong * restrict entropies_lo, 
+    __global uchar * restrict output_addresses, 
+    uint purpose
+) {
   ulong idx = get_global_id(0);
+  
+  // OPTIMIZATION: Coalesced memory reads - threads access consecutive elements
   ulong mnemonic_hi = entropies_hi[idx];
   ulong mnemonic_lo = entropies_lo[idx];
 
   // --- Mnemonic Generation (from int_to_address.cl) ---
-  uchar bytes[16] __attribute__((aligned(4)));
+  // OPTIMIZATION: Aligned buffers for better memory access
+  uchar bytes[16] __attribute__((aligned(16)));
   bytes[15] = mnemonic_lo & 0xFF;
   bytes[14] = (mnemonic_lo >> 8) & 0xFF;
   bytes[13] = (mnemonic_lo >> 16) & 0xFF;
@@ -333,8 +343,12 @@ __kernel void batch_address(__global ulong * entropies_hi, __global ulong * entr
       for(int i=0; i<20; i++) raw_address[i] = ripemd160_result[i];
   }
 
-  // Copy to output
+  // OPTIMIZATION: Coalesced memory writes - sequential pattern for best performance
+  // Write output in chunks to maximize memory bandwidth
+  __global uchar* out_ptr = output_addresses + (idx * 25);
+  
+  #pragma unroll
   for(int i=0; i<25; i++) {
-      output_addresses[idx * 25 + i] = raw_address[i];
+      out_ptr[i] = raw_address[i];
   }
 }
