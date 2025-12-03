@@ -1,11 +1,13 @@
-use ocl::{Buffer, MemFlags, ProQue, Device};
+use ocl::{Buffer, MemFlags, ProQue};
 
 pub struct GpuSolver {
     pro_que: ProQue,
     kernel_name: String,
     max_work_group_size: usize,
     preferred_work_group_multiple: usize,
+    #[allow(dead_code)]
     max_compute_units: u32,
+    #[allow(dead_code)]
     local_mem_size: u64,
 }
 
@@ -78,13 +80,20 @@ impl GpuSolver {
         
         // Query device capabilities for optimal work group sizing
         let max_work_group_size = device.max_wg_size()? as usize;
-        let max_compute_units = device.max_compute_units()?;
-        let local_mem_size = device.local_mem_size()?;
+        let max_compute_units = match device.info(ocl::enums::DeviceInfo::MaxComputeUnits)? {
+            ocl::enums::DeviceInfoResult::MaxComputeUnits(units) => units,
+            _ => 8, // Safe default
+        };
+        let local_mem_size = match device.info(ocl::enums::DeviceInfo::LocalMemSize)? {
+            ocl::enums::DeviceInfoResult::LocalMemSize(size) => size,
+            _ => 32768, // Safe default (32KB)
+        };
         
         // Determine preferred work group multiple (warp/wavefront size)
-        let preferred_work_group_multiple = if let Ok(pref) = device.info(ocl::enums::DeviceInfo::PreferredWorkGroupSizeMultiple) {
+        // Use PreferredVectorWidthInt as a proxy for warp/wavefront size
+        let preferred_work_group_multiple = if let Ok(pref) = device.info(ocl::enums::DeviceInfo::PreferredVectorWidthInt) {
             match pref {
-                ocl::enums::DeviceInfoResult::PreferredWorkGroupSizeMultiple(size) => size as usize,
+                ocl::enums::DeviceInfoResult::PreferredVectorWidthInt(size) => (size as usize) * 8,
                 _ => 32, // Default to 32 for NVIDIA warp size
             }
         } else {
@@ -128,7 +137,8 @@ impl GpuSolver {
     }
     
     // Calculate optimal batch size based on device compute units
-    fn calculate_optimal_batch_size(&self, work_per_item: usize) -> usize {
+    #[allow(dead_code)]
+    fn calculate_optimal_batch_size(&self, _work_per_item: usize) -> usize {
         // Aim for 2-4 work items per compute unit for good occupancy
         let occupancy_factor = 4;
         let optimal_size = (self.max_compute_units as usize) * self.max_work_group_size * occupancy_factor;
@@ -866,12 +876,36 @@ impl GpuSolver {
         let name = device.name()?;
         let vendor = device.vendor()?;
         let version = device.version()?;
-        let driver = device.driver_version()?;
-        let compute_units = device.max_compute_units()?;
-        let clock_freq = device.max_clock_frequency()?;
-        let global_mem = device.global_mem_size()? / (1024 * 1024); // MB
-        let local_mem = device.local_mem_size()? / 1024; // KB
-        let max_alloc = device.max_mem_alloc_size()? / (1024 * 1024); // MB
+        
+        let driver = match device.info(ocl::enums::DeviceInfo::DriverVersion)? {
+            ocl::enums::DeviceInfoResult::DriverVersion(v) => v,
+            _ => "Unknown".to_string(),
+        };
+        
+        let compute_units = match device.info(ocl::enums::DeviceInfo::MaxComputeUnits)? {
+            ocl::enums::DeviceInfoResult::MaxComputeUnits(units) => units,
+            _ => 0,
+        };
+        
+        let clock_freq = match device.info(ocl::enums::DeviceInfo::MaxClockFrequency)? {
+            ocl::enums::DeviceInfoResult::MaxClockFrequency(freq) => freq,
+            _ => 0,
+        };
+        
+        let global_mem = match device.info(ocl::enums::DeviceInfo::GlobalMemSize)? {
+            ocl::enums::DeviceInfoResult::GlobalMemSize(size) => size / (1024 * 1024),
+            _ => 0,
+        };
+        
+        let local_mem = match device.info(ocl::enums::DeviceInfo::LocalMemSize)? {
+            ocl::enums::DeviceInfoResult::LocalMemSize(size) => size / 1024,
+            _ => 0,
+        };
+        
+        let max_alloc = match device.info(ocl::enums::DeviceInfo::MaxMemAllocSize)? {
+            ocl::enums::DeviceInfoResult::MaxMemAllocSize(size) => size / (1024 * 1024),
+            _ => 0,
+        };
         
         Ok(format!(
             "GPU Device Information:\n\
