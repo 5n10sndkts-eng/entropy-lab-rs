@@ -168,10 +168,10 @@ fn main() {
     println!("║   Benchmark Complete                              ║");
     println!("╚═══════════════════════════════════════════════════╝\n");
     
-    println!("Note: These benchmarks measure GPU kernel performance.");
-    println!("Actual application performance depends on:");
-    println!("  - Data transfer overhead");
-    println!("  - CPU preprocessing");
-    println!("  - Network I/O (for RPC operations)");
-    println!("  - Disk I/O (for large datasets)");
+    println!("Note: These benchmarks measure GPU kernel performance.\n\
+              Actual application performance depends on:\n\
+                - Data transfer overhead\n\
+                - CPU preprocessing\n\
+                - Network I/O (for RPC operations)\n\
+                - Disk I/O (for large datasets)");
 }
