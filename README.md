@@ -174,7 +174,7 @@ entropy-lab-rs/
 
 ## Known Limitations
 
-1. **Android SecureRandom Scanner**: Currently detects duplicate R values but does not implement private key recovery. This requires ECDSA private key recovery from duplicate nonces (marked as TODO in code).
+1. **Android SecureRandom Scanner**: Implements private key recovery from duplicate R values (nonce reuse). Recovery requires access to previous transactions via RPC to compute the sighash. If previous transactions are not available or pruned, recovery will fail but duplicate R values will still be detected.
 
 2. **GPU Features**: Requires OpenCL installation. If not available, the tool will fail at link time. Consider making OpenCL optional via feature flags for systems without GPU support.
 
@@ -207,7 +207,7 @@ Contributions are welcome! Please:
 
 ## Roadmap
 
-- [ ] Complete Android SecureRandom private key recovery implementation
+- [x] Complete Android SecureRandom private key recovery implementation
 - [ ] Add comprehensive integration tests
 - [ ] Make OpenCL dependency optional via feature flags
 - [ ] Add structured logging (replace println! with proper logging)
