@@ -1,8 +1,12 @@
-use ocl::{Buffer, MemFlags, ProQue};
+use ocl::{Buffer, MemFlags, ProQue, Device};
 
 pub struct GpuSolver {
     pro_que: ProQue,
     kernel_name: String,
+    max_work_group_size: usize,
+    preferred_work_group_multiple: usize,
+    max_compute_units: u32,
+    local_mem_size: u64,
 }
 
 impl GpuSolver {
@@ -62,38 +66,79 @@ impl GpuSolver {
 
         eprintln!("[GPU] Building OpenCL program...");
         let mut prog_bldr = ocl::Program::builder();
-        prog_bldr.src(raw_cl_file).cmplr_opt("-w");
+        
+        // Add aggressive compiler optimizations
+        prog_bldr.src(raw_cl_file).cmplr_opt(
+            "-w -cl-fast-relaxed-math -cl-mad-enable -cl-no-signed-zeros -cl-unsafe-math-optimizations"
+        );
 
         let pro_que = ProQue::builder().prog_bldr(prog_bldr).dims(1).build()?;
 
+        let device = pro_que.device();
+        
+        // Query device capabilities for optimal work group sizing
+        let max_work_group_size = device.max_wg_size()? as usize;
+        let max_compute_units = device.max_compute_units()?;
+        let local_mem_size = device.local_mem_size()?;
+        
+        // Determine preferred work group multiple (warp/wavefront size)
+        let preferred_work_group_multiple = if let Ok(pref) = device.info(ocl::enums::DeviceInfo::PreferredWorkGroupSizeMultiple) {
+            match pref {
+                ocl::enums::DeviceInfoResult::PreferredWorkGroupSizeMultiple(size) => size as usize,
+                _ => 32, // Default to 32 for NVIDIA warp size
+            }
+        } else {
+            32 // Safe default
+        };
+
         eprintln!("[GPU] ✓ GPU solver initialized successfully");
-        eprintln!("[GPU] Device: {:?}", pro_que.device().name()?);
+        eprintln!("[GPU] Device: {:?}", device.name()?);
+        eprintln!("[GPU] Max work group size: {}", max_work_group_size);
+        eprintln!("[GPU] Preferred work group multiple: {}", preferred_work_group_multiple);
+        eprintln!("[GPU] Max compute units: {}", max_compute_units);
+        eprintln!("[GPU] Local memory size: {} KB", local_mem_size / 1024);
 
         Ok(Self {
             pro_que,
             kernel_name: "batch_address".to_string(),
+            max_work_group_size,
+            preferred_work_group_multiple,
+            max_compute_units,
+            local_mem_size,
         })
     }
 
-    // Helper function to calculate optimal local work size
-    fn calculate_local_work_size(global_size: usize) -> usize {
-        const MAX_WORK_GROUP_SIZE: usize = 256; // Safe value for most GPUs
-        const PREFERRED_MULTIPLE: usize = 32; // Warp size for NVIDIA
-
-        if global_size < PREFERRED_MULTIPLE {
+    // Helper function to calculate optimal local work size based on device capabilities
+    fn calculate_local_work_size(&self, global_size: usize) -> usize {
+        if global_size < self.preferred_work_group_multiple {
             return global_size;
         }
 
-        // Find the largest multiple of PREFERRED_MULTIPLE that divides global_size
-        for i in (1..=(MAX_WORK_GROUP_SIZE / PREFERRED_MULTIPLE)).rev() {
-            let local_size = i * PREFERRED_MULTIPLE;
+        // Find the largest multiple of preferred_work_group_multiple that divides global_size
+        // and doesn't exceed max_work_group_size
+        for i in (1..=(self.max_work_group_size / self.preferred_work_group_multiple)).rev() {
+            let local_size = i * self.preferred_work_group_multiple;
             if global_size % local_size == 0 {
                 return local_size;
             }
         }
 
         // Fall back to preferred multiple
-        PREFERRED_MULTIPLE
+        self.preferred_work_group_multiple
+    }
+    
+    // Calculate optimal batch size based on device compute units
+    fn calculate_optimal_batch_size(&self, work_per_item: usize) -> usize {
+        // Aim for 2-4 work items per compute unit for good occupancy
+        let occupancy_factor = 4;
+        let optimal_size = (self.max_compute_units as usize) * self.max_work_group_size * occupancy_factor;
+        
+        // Round to nearest preferred work group multiple
+        let rounded = ((optimal_size + self.preferred_work_group_multiple - 1) 
+                      / self.preferred_work_group_multiple) 
+                      * self.preferred_work_group_multiple;
+        
+        rounded.max(self.preferred_work_group_multiple)
     }
 
     pub fn compute_batch(
@@ -125,16 +170,17 @@ impl GpuSolver {
             entropies_lo.push(lo);
         }
 
+        // Use pinned/alloc_host_ptr for faster CPU-GPU transfers
         let buffer_hi = Buffer::builder()
             .queue(self.pro_que.queue().clone())
-            .flags(MemFlags::new().read_only().copy_host_ptr())
+            .flags(MemFlags::new().read_only().alloc_host_ptr().copy_host_ptr())
             .len(batch_size)
             .copy_host_slice(&entropies_hi)
             .build()?;
 
         let buffer_lo = Buffer::builder()
             .queue(self.pro_que.queue().clone())
-            .flags(MemFlags::new().read_only().copy_host_ptr())
+            .flags(MemFlags::new().read_only().alloc_host_ptr().copy_host_ptr())
             .len(batch_size)
             .copy_host_slice(&entropies_lo)
             .build()?;
@@ -142,9 +188,12 @@ impl GpuSolver {
         let output_len = batch_size * 25;
         let buffer_out = Buffer::<u8>::builder()
             .queue(self.pro_que.queue().clone())
-            .flags(MemFlags::new().write_only())
+            .flags(MemFlags::new().write_only().alloc_host_ptr())
             .len(output_len)
             .build()?;
+
+        // Calculate optimal local work size
+        let local_work_size = self.calculate_local_work_size(batch_size);
 
         let kernel = self
             .pro_que
@@ -154,6 +203,7 @@ impl GpuSolver {
             .arg(&buffer_out)
             .arg(purpose)
             .global_work_size(batch_size)
+            .local_work_size(local_work_size)
             .build()?;
 
         unsafe {
@@ -181,18 +231,18 @@ impl GpuSolver {
         let batch_size = timestamps.len();
         let target_count = target_hashes.len() / 32;
 
-        // Input buffer: timestamps
+        // Use pinned memory for faster transfers
         let buffer_timestamps = Buffer::builder()
             .queue(self.pro_que.queue().clone())
-            .flags(MemFlags::new().read_only().copy_host_ptr())
+            .flags(MemFlags::new().read_only().alloc_host_ptr().copy_host_ptr())
             .len(batch_size)
             .copy_host_slice(timestamps)
             .build()?;
 
-        // Input buffer: target hashes
+        // Input buffer: target hashes (read-only, can be cached)
         let buffer_hashes = Buffer::builder()
             .queue(self.pro_que.queue().clone())
-            .flags(MemFlags::new().read_only().copy_host_ptr())
+            .flags(MemFlags::new().read_only().alloc_host_ptr().copy_host_ptr())
             .len(target_hashes.len())
             .copy_host_slice(target_hashes)
             .build()?;
@@ -202,17 +252,20 @@ impl GpuSolver {
         let max_results = 1024;
         let buffer_results = Buffer::<u64>::builder()
             .queue(self.pro_que.queue().clone())
-            .flags(MemFlags::new().write_only())
+            .flags(MemFlags::new().write_only().alloc_host_ptr())
             .len(max_results)
             .build()?;
 
         // Output buffer: result count
         let buffer_count = Buffer::<u32>::builder()
             .queue(self.pro_que.queue().clone())
-            .flags(MemFlags::new().read_write().copy_host_ptr())
+            .flags(MemFlags::new().read_write().alloc_host_ptr().copy_host_ptr())
             .len(1)
             .copy_host_slice(&[0u32])
             .build()?;
+
+        // Calculate optimal local work size
+        let local_work_size = self.calculate_local_work_size(batch_size);
 
         let kernel = self
             .pro_que
@@ -223,6 +276,7 @@ impl GpuSolver {
             .arg(&buffer_results)
             .arg(&buffer_count)
             .global_work_size(batch_size)
+            .local_work_size(local_work_size)
             .build()?;
 
         unsafe {
@@ -254,21 +308,24 @@ impl GpuSolver {
             return Ok(Vec::new());
         }
 
-        // Input buffer: device indices
+        // Input buffer: device indices (with pinned memory)
         let buffer_indices = Buffer::builder()
             .queue(self.pro_que.queue().clone())
-            .flags(MemFlags::new().read_only().copy_host_ptr())
+            .flags(MemFlags::new().read_only().alloc_host_ptr().copy_host_ptr())
             .len(count)
             .copy_host_slice(indices)
             .build()?;
 
-        // Output buffer: hashes (count * 32 bytes)
+        // Output buffer: hashes (count * 32 bytes, with pinned memory)
         let out_len = count * 32;
         let buffer_out = Buffer::<u8>::builder()
             .queue(self.pro_que.queue().clone())
-            .flags(MemFlags::new().write_only())
+            .flags(MemFlags::new().write_only().alloc_host_ptr())
             .len(out_len)
             .build()?;
+
+        // Calculate optimal local work size
+        let local_work_size = self.calculate_local_work_size(count);
 
         let kernel = self
             .pro_que
@@ -277,6 +334,7 @@ impl GpuSolver {
             .arg(&buffer_out)
             .arg(count as u32)
             .global_work_size(count)
+            .local_work_size(local_work_size)
             .build()?;
 
         unsafe {
@@ -383,24 +441,25 @@ impl GpuSolver {
             h3 |= (target_h160[i + 16] as u32) << (i * 8);
         }
 
-        // Output buffers
+        // Output buffers (with pinned memory for faster results readback)
         let max_results = 1024;
         let buffer_results = Buffer::<u64>::builder()
             .queue(self.pro_que.queue().clone())
-            .flags(MemFlags::new().write_only())
+            .flags(MemFlags::new().write_only().alloc_host_ptr())
             .len(max_results)
             .build()?;
 
         let buffer_count = Buffer::<u32>::builder()
             .queue(self.pro_que.queue().clone())
-            .flags(MemFlags::new().read_write().copy_host_ptr())
+            .flags(MemFlags::new().read_write().alloc_host_ptr().copy_host_ptr())
             .len(1)
             .copy_host_slice(&[0u32])
             .build()?;
 
         // Search space: 201 * 201 * 201 = 8,120,601
         let range = 201 * 201 * 201;
-        let local_work_size = 256;
+        // Use device-specific local work size
+        let local_work_size = self.max_work_group_size.min(256);
         let global_work_size = ((range + local_work_size - 1) / local_work_size) * local_work_size;
         let offset: u64 = 0;
 
@@ -442,17 +501,17 @@ impl GpuSolver {
     ) -> ocl::Result<Vec<u64>> {
         let kernel_name = "batch_profanity";
 
-        // Output buffers
+        // Output buffers (with pinned memory)
         let max_results = 1024;
         let buffer_results = Buffer::<u64>::builder()
             .queue(self.pro_que.queue().clone())
-            .flags(MemFlags::new().read_write())
+            .flags(MemFlags::new().read_write().alloc_host_ptr())
             .len(max_results)
             .build()?;
 
         let buffer_count = Buffer::<u32>::builder()
             .queue(self.pro_que.queue().clone())
-            .flags(MemFlags::new().read_write())
+            .flags(MemFlags::new().read_write().alloc_host_ptr())
             .len(1)
             .build()?;
 
@@ -486,9 +545,9 @@ impl GpuSolver {
             .arg(0u64) // Offset
             .build()?;
 
-        // Run
+        // Run with device-optimized work group size
         let global_work_size = search_space;
-        let local_work_size = 256;
+        let local_work_size = self.max_work_group_size.min(256);
 
         unsafe {
             kernel
@@ -524,13 +583,13 @@ impl GpuSolver {
         let max_results = 1024;
         let buffer_results = Buffer::<u64>::builder()
             .queue(self.pro_que.queue().clone())
-            .flags(MemFlags::new().read_write())
+            .flags(MemFlags::new().read_write().alloc_host_ptr())
             .len(max_results)
             .build()?;
 
         let buffer_count = Buffer::<u32>::builder()
             .queue(self.pro_que.queue().clone())
-            .flags(MemFlags::new().read_write())
+            .flags(MemFlags::new().read_write().alloc_host_ptr())
             .len(1)
             .build()?;
 
@@ -563,7 +622,8 @@ impl GpuSolver {
             .build()?;
 
         let range = (end_timestamp - start_timestamp) as usize;
-        let local_work_size = 256;
+        // Use device-optimized work group size
+        let local_work_size = self.max_work_group_size.min(256);
         // Round up to nearest multiple of local_work_size
         let global_work_size = ((range + local_work_size - 1) / local_work_size) * local_work_size;
 
@@ -600,13 +660,13 @@ impl GpuSolver {
         let max_results = 1024;
         let buffer_results = Buffer::<u64>::builder()
             .queue(self.pro_que.queue().clone())
-            .flags(MemFlags::new().read_write())
+            .flags(MemFlags::new().read_write().alloc_host_ptr())
             .len(max_results)
             .build()?;
 
         let buffer_count = Buffer::<u32>::builder()
             .queue(self.pro_que.queue().clone())
-            .flags(MemFlags::new().read_write())
+            .flags(MemFlags::new().read_write().alloc_host_ptr())
             .len(1)
             .build()?;
 
@@ -639,7 +699,8 @@ impl GpuSolver {
             .build()?;
 
         let range = (end_timestamp - start_timestamp) as usize;
-        let local_work_size = 256;
+        // Use device-optimized work group size
+        let local_work_size = self.max_work_group_size.min(256);
         // Round up to nearest multiple of local_work_size
         let global_work_size = ((range + local_work_size - 1) / local_work_size) * local_work_size;
 
@@ -680,13 +741,13 @@ impl GpuSolver {
         let max_results = 1024;
         let buffer_results = Buffer::<u64>::builder()
             .queue(self.pro_que.queue().clone())
-            .flags(MemFlags::new().read_write())
+            .flags(MemFlags::new().read_write().alloc_host_ptr())
             .len(max_results)
             .build()?;
 
         let buffer_count = Buffer::<u32>::builder()
             .queue(self.pro_que.queue().clone())
-            .flags(MemFlags::new().read_write())
+            .flags(MemFlags::new().read_write().alloc_host_ptr())
             .len(1)
             .build()?;
 
@@ -719,7 +780,8 @@ impl GpuSolver {
             .build()?;
 
         let range = (end_timestamp - start_timestamp) as usize;
-        let local_work_size = 256;
+        // Use device-optimized work group size
+        let local_work_size = self.max_work_group_size.min(256);
         let global_work_size = ((range + local_work_size - 1) / local_work_size) * local_work_size;
 
         unsafe {
@@ -758,18 +820,18 @@ impl GpuSolver {
 
         let buffer_seeds = Buffer::builder()
             .queue(self.pro_que.queue().clone())
-            .flags(MemFlags::new().read_only().copy_host_ptr())
+            .flags(MemFlags::new().read_only().alloc_host_ptr().copy_host_ptr())
             .len(count)
             .copy_host_slice(seeds)
             .build()?;
 
         let buffer_results = Buffer::<u8>::builder()
             .queue(self.pro_que.queue().clone())
-            .flags(MemFlags::new().write_only())
+            .flags(MemFlags::new().write_only().alloc_host_ptr())
             .len(count * 16)
             .build()?;
 
-        let local_work_size = Self::calculate_local_work_size(count);
+        let local_work_size = self.calculate_local_work_size(count);
 
         let kernel = self
             .pro_que
@@ -796,6 +858,38 @@ impl GpuSolver {
         }
 
         Ok(results)
+    }
+    
+    /// Get GPU device information for debugging and profiling
+    pub fn device_info(&self) -> ocl::Result<String> {
+        let device = self.pro_que.device();
+        let name = device.name()?;
+        let vendor = device.vendor()?;
+        let version = device.version()?;
+        let driver = device.driver_version()?;
+        let compute_units = device.max_compute_units()?;
+        let clock_freq = device.max_clock_frequency()?;
+        let global_mem = device.global_mem_size()? / (1024 * 1024); // MB
+        let local_mem = device.local_mem_size()? / 1024; // KB
+        let max_alloc = device.max_mem_alloc_size()? / (1024 * 1024); // MB
+        
+        Ok(format!(
+            "GPU Device Information:\n\
+             Name: {}\n\
+             Vendor: {}\n\
+             Version: {}\n\
+             Driver: {}\n\
+             Compute Units: {}\n\
+             Clock Frequency: {} MHz\n\
+             Global Memory: {} MB\n\
+             Local Memory: {} KB\n\
+             Max Allocation: {} MB\n\
+             Max Work Group Size: {}\n\
+             Preferred Multiple: {}",
+            name, vendor, version, driver,
+            compute_units, clock_freq, global_mem, local_mem, max_alloc,
+            self.max_work_group_size, self.preferred_work_group_multiple
+        ))
     }
 }
 

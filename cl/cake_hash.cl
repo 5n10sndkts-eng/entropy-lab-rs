@@ -1,7 +1,10 @@
 // Cake Wallet Full GPU Scanner
 // Dependencies: dart_prng, sha2, mnemonic_constants
 
-int compare_hashes(uchar* a, __global uchar* b) {
+// OPTIMIZATION: Inline hint for frequently called function
+inline int compare_hashes(uchar* a, __global const uchar* b) {
+    // OPTIMIZATION: Unroll comparison loop for better performance
+    #pragma unroll 8
     for (int i = 0; i < 32; i++) {
         if (a[i] < b[i]) return -1;
         if (a[i] > b[i]) return 1;
@@ -9,14 +12,17 @@ int compare_hashes(uchar* a, __global uchar* b) {
     return 0;
 }
 
+// OPTIMIZATION: Use restrict and const for read-only buffers
 __kernel void cake_hash(
-    __global ulong * timestamps,
-    __global uchar * target_hashes,
+    __global const ulong * restrict timestamps,
+    __global const uchar * restrict target_hashes,
     uint target_count,
-    __global ulong * results,
-    __global uint * result_count
+    __global ulong * restrict results,
+    __global uint * restrict result_count
 ) {
     ulong gid = get_global_id(0);
+    
+    // OPTIMIZATION: Coalesced memory read
     ulong timestamp_us = timestamps[gid];
     
     // 1. Dart PRNG -> Entropy
