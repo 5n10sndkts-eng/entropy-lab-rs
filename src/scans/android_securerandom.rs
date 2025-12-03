@@ -248,7 +248,7 @@ fn recover_private_key_from_duplicate_r(
     m1: &[u8],
     m2: &[u8],
 ) -> Result<SecretKey> {
-    let n = BigInt::parse_bytes(SECP256K1_N.as_bytes(), 16)
+    let n = BigInt::parse_bytes(SECP256K1_N.as_bytes(), 10)
         .ok_or_else(|| anyhow!("Failed to parse curve order"))?;
 
     // Convert to BigInt

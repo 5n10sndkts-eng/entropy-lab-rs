@@ -1,5 +1,10 @@
 use ocl::{Buffer, MemFlags, ProQue};
 
+// Heuristic multiplier to estimate warp/wavefront size from vector width
+// PreferredVectorWidthInt typically returns 1-4, but warp sizes are 32-64
+// 4 * 8 = 32 (NVIDIA warp), 8 * 8 = 64 (AMD wavefront)
+const VECTOR_WIDTH_TO_WARP_MULTIPLIER: usize = 8;
+
 pub struct GpuSolver {
     pro_que: ProQue,
     kernel_name: String,
@@ -93,10 +98,9 @@ impl GpuSolver {
         // Use PreferredVectorWidthInt as a proxy for warp/wavefront size
         let preferred_work_group_multiple = if let Ok(pref) = device.info(ocl::enums::DeviceInfo::PreferredVectorWidthInt) {
             match pref {
-                // Multiply by 8 to approximate warp/wavefront size:
-                // PreferredVectorWidthInt typically returns 1-4, but actual warp size is 32-64
-                // 4 * 8 = 32 (NVIDIA warp size), 8 * 8 = 64 (AMD wavefront size)
-                ocl::enums::DeviceInfoResult::PreferredVectorWidthInt(size) => (size as usize) * 8,
+                ocl::enums::DeviceInfoResult::PreferredVectorWidthInt(size) => {
+                    (size as usize) * VECTOR_WIDTH_TO_WARP_MULTIPLIER
+                }
                 _ => 32, // Default to 32 for NVIDIA warp size
             }
         } else {

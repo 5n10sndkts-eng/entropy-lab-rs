@@ -68,7 +68,8 @@ pub fn run(rpc_url: &str, rpc_user: &str, rpc_pass: &str) -> Result<()> {
         }
 
         // Generate addresses on GPU for all 3 derivation paths
-        // Purpose codes: 0 = m/44'/0'/0'/0/0, 1 = m/84'/0'/0'/0/0, 2 = m/0'/0/0 (Cake)
+        // Purpose parameter corresponds to BIP44 purpose in derivation path m/purpose'/0'/0'/0/0
+        // 44 = m/44'/0'/0'/0/0 (BIP44 Legacy), 84 = m/84'/0'/0'/0/0 (BIP84 SegWit), 0 = m/0'/0/0 (Cake Wallet)
         let addresses_44 = solver.compute_batch(&entropies, 44)?;
         let addresses_84 = solver.compute_batch(&entropies, 84)?;
         let addresses_0 = solver.compute_batch(&entropies, 0)?;
@@ -155,6 +156,7 @@ pub fn run(rpc_url: &str, rpc_user: &str, rpc_pass: &str) -> Result<()> {
 
 /// Decode GPU address format to Bitcoin address string
 /// GPU returns addresses as base58-encoded strings in a 25-byte buffer
+#[allow(unused_variables)]
 fn decode_address_from_gpu(addr_bytes: &[u8; 25], _addr_type: &str, _network: Network) -> Result<String> {
     // GPU kernels output base58-encoded addresses as null-terminated strings
     // The 25-byte buffer contains the ASCII string representation
