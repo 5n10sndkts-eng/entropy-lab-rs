@@ -8,11 +8,12 @@
 // 4. Reduced register pressure through strategic spills to local memory
 
 // Local memory requirements per workgroup:
-// - SHA-256 workspace: 256 bytes per thread
-// - SHA-512 workspace: 512 bytes per thread
-// - Total: ~768 bytes per thread
-// For workgroup size 256: ~196 KB local memory needed
+// - SHA-256 workspace: 64 uints * 4 bytes = 256 bytes per thread
+// - SHA-512 workspace: 80 ulongs * 8 bytes = 640 bytes per thread
+// - Total: 896 bytes per thread
+// For workgroup size 256: ~224 KB local memory needed
 // Most GPUs support 32-64 KB local memory, so we use adaptive sizing
+// NOTE: In practice, workgroup sizes will be limited by available local memory
 
 // OPTIMIZATION: Use local memory for frequently accessed hash state
 // This is 10-100x faster than global memory for repeated operations
@@ -36,7 +37,9 @@ __kernel void batch_address_local_optimized(
   // Each thread gets a dedicated section of local memory
   // SHA-256 needs 64 uints (256 bytes) for working state
   // SHA-512 needs 80 ulongs (640 bytes) for working state
-  __local uint *my_sha256_workspace = &local_sha256_workspace[local_id * 64];
+  // OPTIMIZATION: Add padding to avoid bank conflicts on AMD GPUs (32-way banked)
+  // Use (local_id * 65) instead of (local_id * 64) for SHA-256 to avoid conflicts
+  __local uint *my_sha256_workspace = &local_sha256_workspace[local_id * 65];
   __local ulong *my_sha512_workspace = &local_sha512_workspace[local_id * 80];
 
   // --- Mnemonic Generation (from entropy) ---
@@ -66,8 +69,13 @@ __kernel void batch_address_local_optimized(
   uchar mnemonic_hash[32] __attribute__((aligned(4)));
   
   // Copy input to local workspace for SHA-256 (faster repeated access)
+  // Note: Ensure proper alignment for uint access
+  uint bytes_as_uint[4];
   for(int i = 0; i < 4; i++) {
-    my_sha256_workspace[i] = ((uint*)bytes)[i];
+    // Safe conversion: read 4 bytes at a time
+    bytes_as_uint[i] = (bytes[i*4] << 24) | (bytes[i*4+1] << 16) | 
+                       (bytes[i*4+2] << 8) | bytes[i*4+3];
+    my_sha256_workspace[i] = bytes_as_uint[i];
   }
   
   // Compute SHA-256 using local workspace
@@ -123,8 +131,9 @@ __kernel void batch_address_local_optimized(
   uchar opad_key[128] __attribute__((aligned(4)));
   
   // OPTIMIZATION: Vector initialization using uint4
+  // 128 bytes = 32 uints = 8 uint4 vectors
   #pragma unroll 8
-  for(int x=0;x<32;x++){
+  for(int x=0;x<8;x++){
     ((uint4*)ipad_key)[x] = (uint4)(0x36363636u);
     ((uint4*)opad_key)[x] = (uint4)(0x5c5c5c5cu);
   }
@@ -292,28 +301,51 @@ __kernel void batch_address_local_optimized(
     output_addresses[out_offset + i] = raw_address[i];
   }
   
-  // OPTIMIZATION: Ensure all threads in workgroup complete before returning
-  // This allows local memory to be reused by next workgroup
-  barrier(CLK_LOCAL_MEM_FENCE);
+  // NOTE: No barrier needed at kernel end - OpenCL guarantees completion
 }
 
 // Helper function: SHA-256 using local memory workspace
-// This version uses local memory for intermediate state, providing 20-40% speedup
+// NOTE: This is a REFERENCE IMPLEMENTATION showing the intended optimization pattern.
+// For production use, the core sha256() function in sha2.cl needs to be modified
+// to accept __local memory pointers for the W array and state variables.
+//
+// Full implementation would:
+// 1. Declare W array in local memory: __local uint W[64]
+// 2. Perform all SHA-256 rounds using local memory
+// 3. Copy final hash to private/global memory
+//
+// Expected performance gain: 20-40% over global memory version
+//
+// Current implementation uses existing sha256() as fallback
 static void sha256_local(__local uint *workspace, const uint length, __private uint *hash) {
-  // Use workspace for W array and state
-  // Implementation delegates to standard sha256 but with local memory hints
-  // This is a stub - actual implementation would use workspace
-  sha256((__private const uint*)workspace, length, hash);
+  // FIXME: Full implementation needed - copy from workspace to private buffer
+  // then call sha256, or better: modify sha256 to accept __local pointers
+  uint private_buffer[16];
+  for(int i = 0; i < 16 && i * 4 < length; i++) {
+    private_buffer[i] = workspace[i];
+  }
+  sha256((__private const uint*)private_buffer, length, hash);
 }
 
 // Helper function: SHA-512 using local memory workspace
+// See sha256_local comments above - same pattern applies
 static void sha512_local(__local ulong *workspace, const uint length, __private ulong *hash) {
-  // Use workspace for W array and state
-  // Implementation delegates to standard sha512 but with local memory hints
-  sha512((__private ulong*)workspace, length, hash);
+  // FIXME: Full implementation needed
+  ulong private_buffer[32];
+  for(int i = 0; i < 32 && i * 8 < length; i++) {
+    private_buffer[i] = workspace[i];
+  }
+  sha512((__private ulong*)private_buffer, length, hash);
 }
 
-// OPTIMIZATION NOTE: To fully leverage local memory, the sha256() and sha512()
-// functions themselves need to be modified to accept __local pointers for their
-// working state (W array, state variables). This provides the maximum benefit.
-// See ADVANCED_GPU_OPTIMIZATIONS.md Phase 1 for detailed implementation.
+// IMPORTANT IMPLEMENTATION NOTE:
+// This file provides a REFERENCE ARCHITECTURE for local memory optimization.
+// The sha256_local and sha512_local functions are STUBS that demonstrate the
+// intended API but don't provide the full performance benefit.
+//
+// For full optimization, modify cl/sha2.cl and cl/sha512.cl to:
+// 1. Add variants that accept __local pointers
+// 2. Perform all operations in local memory
+// 3. Use barriers for synchronization within workgroup
+//
+// See ADVANCED_GPU_OPTIMIZATIONS.md Phase 1 for detailed implementation guide.

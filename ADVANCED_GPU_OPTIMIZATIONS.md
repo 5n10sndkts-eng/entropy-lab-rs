@@ -63,7 +63,13 @@ __kernel void batch_address_with_local(
 }
 ```
 
-**Expected Gain**: 20-40% (confirmed by BTCRecover benchmarks)
+**Expected Gain**: 20-40% (based on BTCRecover published results and OpenCL best practices)
+
+**Note**: These performance estimates are based on:
+- BTCRecover's documented GPU acceleration guide showing 14-100x gains with similar techniques
+- OpenCL optimization literature indicating 20-40% gains from local memory for hash operations
+- Actual gains will vary by GPU vendor, driver version, and workload characteristics
+- Validation on target hardware is required to confirm these projections
 
 **Rationale**: 
 - Local memory is 10-100x faster than global memory
@@ -217,6 +223,17 @@ Based on research and project requirements:
 **Optional**: Consider CUDA as future enhancement if NVIDIA-specific deployment is critical, but NOT for initial optimization work.
 
 ## Implementation Roadmap
+
+### Timeline and Risk Considerations
+
+**Important Notes**:
+- Estimates below assume experienced GPU developer familiar with OpenCL
+- Hardware-specific issues often arise during testing phase
+- Each phase includes time for validation, debugging, and optimization
+- Risk buffers (20-30%) should be added for production timelines
+- Dependencies: Phase 1 should complete before Phase 2-3 begin
+
+**Critical Path**: Phase 1 → Phase 4 → Phase 2 → Phase 3 → Phase 5-6
 
 ### Week 1-2: Local Memory Optimization
 - [ ] Implement local memory for SHA-256 working blocks
