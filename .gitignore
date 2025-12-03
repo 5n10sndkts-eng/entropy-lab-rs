@@ -1,14 +1,32 @@
-# Rust build artifacts
+# Rust
 /target
-debug/
-target/
-**/*.rs.bk
-*.pdb
+Cargo.lock
 
-# Cargo lock files (for libraries)
-# Cargo.lock  # Uncomment for libraries
+# Build artifacts
+*.o
+*.so
+*.dylib
+*.dll
+*.a
+*.lib
 
-# IDE and editor files
+# Output files
+*.csv
+*.log
+*.txt
+!cakewallet_vulnerable_hashes.txt
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv/
+
+# IDE
 .vscode/
 .idea/
 *.swp
@@ -16,37 +34,11 @@ target/
 *~
 .DS_Store
 
-# CSV and log files (output from scans)
-*.csv
-*.log
-
-# Python cache
-__pycache__/
-*.py[cod]
-*$py.class
-
-# Text files (scan results)
-*.txt
-!cakewallet_vulnerable_hashes.txt
-
 # Environment variables
 .env
 .env.local
 
-# Test coverage
-*.profraw
-*.profdata
-
-# macOS
-.DS_Store
-.AppleDouble
-.LSOverride
-
-# Linux
-*~
-.directory
-
-# Windows
-Thumbs.db
-ehthumbs.db
-Desktop.ini
+# Test outputs
+android_securerandom_hits.txt
+hits.txt
+results/

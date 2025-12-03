@@ -1,5 +1,5 @@
-use clap::{Parser, Subcommand};
 use anyhow::Result;
+use clap::{Parser, Subcommand};
 use entropy_lab_rs::scans;
 
 #[derive(Parser)]
@@ -49,21 +49,25 @@ enum Commands {
         addresses: String,
     },
     /// Scan Cake Wallet vulnerability with RPC balance checking
+    /// Requires RPC credentials. Set via: --rpc-url, --rpc-user, --rpc-pass
+    /// Or use environment variables: RPC_URL, RPC_USER, RPC_PASS
     CakeWalletRpc {
-        #[arg(long, env = "RPC_URL", default_value = "http://localhost:8332")]
+        #[arg(long, default_value = "http://127.0.0.1:8332")]
         rpc_url: String,
-        #[arg(long, env = "RPC_USER", default_value = "bitcoinrpc")]
+        #[arg(long)]
         rpc_user: String,
-        #[arg(long, env = "RPC_PASS", required = true)]
+        #[arg(long)]
         rpc_pass: String,
     },
     /// Scan Android SecureRandom vulnerability (duplicate R values)
+    /// Requires RPC credentials. Set via: --rpc-url, --rpc-user, --rpc-pass
+    /// Or use environment variables: RPC_URL, RPC_USER, RPC_PASS
     AndroidSecureRandom {
-        #[arg(long, env = "RPC_URL", default_value = "http://localhost:8332")]
+        #[arg(long, default_value = "http://127.0.0.1:8332")]
         rpc_url: String,
-        #[arg(long, env = "RPC_USER", default_value = "bitcoinrpc")]
+        #[arg(long)]
         rpc_user: String,
-        #[arg(long, env = "RPC_PASS", required = true)]
+        #[arg(long)]
         rpc_pass: String,
         #[arg(long, default_value = "302000")]
         start_block: u64,
@@ -77,6 +81,42 @@ enum Commands {
     },
 }
 
+const DEFAULT_RPC_URL: &str = "http://127.0.0.1:8332";
+
+/// Helper function to get RPC credentials with environment variable fallback
+fn get_rpc_credentials(
+    url: String,
+    user: String,
+    pass: String,
+) -> Result<(String, String, String)> {
+    let final_url = if url == DEFAULT_RPC_URL {
+        std::env::var("RPC_URL").unwrap_or(url)
+    } else {
+        url
+    };
+
+    let final_user = if user.is_empty() {
+        std::env::var("RPC_USER").map_err(|_| {
+            anyhow::anyhow!(
+                "RPC_USER must be provided via --rpc-user flag or RPC_USER environment variable"
+            )
+        })?
+    } else {
+        user
+    };
+
+    let final_pass = if pass.is_empty() {
+        std::env::var("RPC_PASS").map_err(|_| {
+            anyhow::anyhow!(
+                "RPC_PASS must be provided via --rpc-pass flag or RPC_PASS environment variable"
+            )
+        })?
+    } else {
+        pass
+    };
+
+    Ok((final_url, final_user, final_pass))
+}
 
 fn main() -> Result<()> {
     let cli = Cli::parse();
@@ -102,7 +142,12 @@ fn main() -> Result<()> {
             println!("Running Mobile Sensor Entropy Reproduction...");
             scans::mobile_sensor::run(target)?;
         }
-        Commands::MilkSad { target, start_timestamp, end_timestamp, multipath } => {
+        Commands::MilkSad {
+            target,
+            start_timestamp,
+            end_timestamp,
+            multipath,
+        } => {
             println!("Running Libbitcoin 'Milk Sad' Vulnerability Reproduction...");
             if let Some(t) = target {
                 scans::milk_sad::run_with_target(t, start_timestamp, end_timestamp, multipath)?;
@@ -122,18 +167,27 @@ fn main() -> Result<()> {
             println!("Running CSV Verification...");
             scans::verify_csv::run(&input, &addresses)?;
         }
-        Commands::CakeWalletRpc { rpc_url, rpc_user, rpc_pass } => {
+        Commands::CakeWalletRpc {
+            rpc_url,
+            rpc_user,
+            rpc_pass,
+        } => {
             println!("Running Cake Wallet RPC Scanner...");
-            scans::cake_wallet_rpc::run(&rpc_url, &rpc_user, &rpc_pass)?;
+            let (url, user, pass) = get_rpc_credentials(rpc_url, rpc_user, rpc_pass)?;
+            scans::cake_wallet_rpc::run(&url, &user, &pass)?;
         }
-        Commands::AndroidSecureRandom { rpc_url, rpc_user, rpc_pass, start_block, end_block } => {
+        Commands::AndroidSecureRandom {
+            rpc_url,
+            rpc_user,
+            rpc_pass,
+            start_block,
+            end_block,
+        } => {
             println!("Running Android SecureRandom Scanner...");
-            scans::android_securerandom::run(&rpc_url, &rpc_user, &rpc_pass, start_block, end_block)?;
+            let (url, user, pass) = get_rpc_credentials(rpc_url, rpc_user, rpc_pass)?;
+            scans::android_securerandom::run(&url, &user, &pass, start_block, end_block)?;
         }
     }
 
-
-
     Ok(())
 }
-

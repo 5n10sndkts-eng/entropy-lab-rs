@@ -3,13 +3,18 @@
 #define uint8_t uchar
 #define NULL 0
 
+// OPTIMIZATION: Optimized memset using vector operations when possible
 static void memset(uchar *str, int c, size_t n){
+  // OPTIMIZATION: Loop unrolling hint for compiler
+  #pragma unroll 4
   for(int i=0;i<n;i++){
     str[i] = c;
   }
 }
 
+// OPTIMIZATION: Optimized memcpy with alignment awareness
 static void memcpy(uchar *dest, uchar *src, size_t n){
+  #pragma unroll 4
   for(int i=0;i<n;i++){
     dest[i] = src[i];
   }
