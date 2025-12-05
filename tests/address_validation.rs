@@ -13,7 +13,6 @@ use bip39::Mnemonic;
 use bitcoin::bip32::{DerivationPath, Xpriv};
 use bitcoin::secp256k1::Secp256k1;
 use bitcoin::{Address, Network, PrivateKey};
-use hex;
 use std::str::FromStr;
 
 /// Test basic entropy to BIP39 mnemonic conversion
@@ -81,14 +80,15 @@ fn test_mnemonic_to_seed() {
     for (mnemonic_str, passphrase, expected_seed_hex) in test_cases {
         let mnemonic = Mnemonic::from_str(mnemonic_str).expect("Failed to parse mnemonic");
         let seed = mnemonic.to_seed(passphrase);
-        let seed_hex = hex::encode(&seed);
+        let seed_hex = hex::encode(seed);
 
         println!("Mnemonic: {}...", &mnemonic_str[..50]);
         println!("  Expected seed: {}...", &expected_seed_hex[..32]);
         println!("  Got seed:      {}...", &seed_hex[..32]);
 
         assert_eq!(
-            seed_hex, expected_seed_hex,
+            seed_hex,
+            expected_seed_hex,
             "Seed mismatch for mnemonic {}",
             &mnemonic_str[..30]
         );
@@ -128,7 +128,7 @@ fn test_p2pkh_address_generation() {
 
         let private_key = PrivateKey::new(derived.private_key, Network::Bitcoin);
         let pubkey = private_key.public_key(&secp);
-        let address = Address::p2pkh(&pubkey, Network::Bitcoin);
+        let address = Address::p2pkh(pubkey, Network::Bitcoin);
 
         println!("Mnemonic: {}...", &mnemonic_str[..50]);
         println!("  Path: {}", path_str);
@@ -265,7 +265,7 @@ fn test_address_index_variation() {
 
         let private_key = PrivateKey::new(derived.private_key, Network::Bitcoin);
         let pubkey = private_key.public_key(&secp);
-        let address = Address::p2pkh(&pubkey, Network::Bitcoin);
+        let address = Address::p2pkh(pubkey, Network::Bitcoin);
 
         println!("  Index {}: {} ({})", i, address, path_str);
 
@@ -285,18 +285,9 @@ fn test_scanner_entropy_generation() {
 
     // Test that our scanner entropy generation matches expectations
     let test_cases = vec![
-        (
-            0u32,
-            "Seed index 0 should produce all-zero entropy prefix",
-        ),
-        (
-            1u32,
-            "Seed index 1 should produce 0x00000001 prefix",
-        ),
-        (
-            255u32,
-            "Seed index 255 should produce 0x000000FF prefix",
-        ),
+        (0u32, "Seed index 0 should produce all-zero entropy prefix"),
+        (1u32, "Seed index 1 should produce 0x00000001 prefix"),
+        (255u32, "Seed index 255 should produce 0x000000FF prefix"),
     ];
 
     for (seed_index, description) in test_cases {
@@ -307,7 +298,7 @@ fn test_scanner_entropy_generation() {
 
         println!("{}", description);
         println!("  Seed index: {}", seed_index);
-        println!("  Entropy: {}", hex::encode(&entropy));
+        println!("  Entropy: {}", hex::encode(entropy));
 
         // Verify it creates valid mnemonic
         let mnemonic = Mnemonic::from_entropy(&entropy).expect("Failed to create mnemonic");
@@ -335,7 +326,7 @@ fn test_base58_encoding() {
 
     let private_key = PrivateKey::new(derived.private_key, Network::Bitcoin);
     let pubkey = private_key.public_key(&secp);
-    let address = Address::p2pkh(&pubkey, Network::Bitcoin);
+    let address = Address::p2pkh(pubkey, Network::Bitcoin);
 
     println!("Address: {}", address);
     println!("  Type: P2PKH (Legacy)");
@@ -378,7 +369,10 @@ fn test_bech32_encoding() {
     assert!(address.to_string().starts_with("bc1q"));
     assert!(!address.to_string().contains('+'));
     assert!(!address.to_string().contains('/'));
-    assert!(address.to_string().chars().all(|c| c.is_lowercase() || c.is_ascii_digit()));
+    assert!(address
+        .to_string()
+        .chars()
+        .all(|c| c.is_lowercase() || c.is_ascii_digit()));
 
     println!("  ✓ Valid Bech32 encoding\n");
 }
@@ -433,7 +427,7 @@ fn test_manual_verification_helper() {
     println!();
 
     let seed = mnemonic.to_seed("");
-    let seed_hex = hex::encode(&seed);
+    let seed_hex = hex::encode(seed);
 
     println!("3. BIP39 Seed (with empty passphrase):");
     println!("   {}...", &seed_hex[..64]);
@@ -469,7 +463,7 @@ fn test_manual_verification_helper() {
             // Legacy
             let private_key = PrivateKey::new(derived.private_key, Network::Bitcoin);
             let pubkey = private_key.public_key(&secp);
-            Address::p2pkh(&pubkey, Network::Bitcoin).to_string()
+            Address::p2pkh(pubkey, Network::Bitcoin).to_string()
         };
 
         println!("   {} ({})", path_str, description);

