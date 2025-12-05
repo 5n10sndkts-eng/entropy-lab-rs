@@ -31,7 +31,7 @@ mod gpu_cpu_tests {
         let private_key = PrivateKey::new(derived.private_key, Network::Bitcoin);
         let pubkey = private_key.public_key(&secp);
         let address = Address::p2pkh(pubkey, Network::Bitcoin);
-        
+
         address.to_string()
     }
 
@@ -108,7 +108,7 @@ mod gpu_cpu_tests {
         }
 
         println!("Results: {}/5 seeds match", match_count);
-        
+
         if all_match {
             println!("🎉 SUCCESS! All GPU addresses match CPU reference implementation!");
         } else {
@@ -132,7 +132,7 @@ mod gpu_cpu_tests {
 
         use rand::Rng;
         let mut rng = rand::thread_rng();
-        
+
         let mut all_match = true;
         let mut match_count = 0;
 
@@ -165,7 +165,7 @@ mod gpu_cpu_tests {
         }
 
         println!("Results: {}/20 random seeds match", match_count);
-        
+
         if all_match {
             println!("🎉 SUCCESS! All random GPU addresses match CPU!");
         } else {
@@ -188,7 +188,7 @@ mod gpu_cpu_tests {
         // Create batch of 100 sequential entropy values
         let batch_size = 100;
         let mut entropies = Vec::new();
-        
+
         for i in 0..batch_size {
             let mut entropy = [0u8; 16];
             let index_bytes = (i as u32).to_be_bytes();
@@ -231,15 +231,17 @@ mod gpu_cpu_tests {
             }
         }
 
-        println!("Batch results: {}/{} addresses match", match_count, batch_size);
-        
+        println!(
+            "Batch results: {}/{} addresses match",
+            match_count, batch_size
+        );
+
         assert!(
             all_match,
             "GPU batch processing produced incorrect results! {}/{} match",
-            match_count,
-            batch_size
+            match_count, batch_size
         );
-        
+
         println!("✓ All {} addresses in batch match!", batch_size);
     }
 }
