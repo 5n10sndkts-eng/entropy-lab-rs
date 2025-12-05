@@ -12,40 +12,34 @@ use std::io::Write;
 /// k = (m1 - m2) / (s1 - s2) mod n
 /// private_key = (s1 * k - m1) / r mod n
 #[allow(dead_code)]
-fn recover_private_key(
-    r: &[u8],
-    s1: &[u8],
-    s2: &[u8],
-    m1: &[u8],
-    m2: &[u8],
-) -> Result<Vec<u8>> {
+fn recover_private_key(r: &[u8], s1: &[u8], s2: &[u8], m1: &[u8], m2: &[u8]) -> Result<Vec<u8>> {
     let n = BigInt::parse_bytes(SECP256K1_N.as_bytes(), 10)
         .ok_or_else(|| anyhow!("Failed to parse SECP256K1_N"))?;
-    
+
     // Convert bytes to BigInt
     let r_int = BigInt::from_bytes_be(num_bigint::Sign::Plus, r);
     let s1_int = BigInt::from_bytes_be(num_bigint::Sign::Plus, s1);
     let s2_int = BigInt::from_bytes_be(num_bigint::Sign::Plus, s2);
     let m1_int = BigInt::from_bytes_be(num_bigint::Sign::Plus, m1);
     let m2_int = BigInt::from_bytes_be(num_bigint::Sign::Plus, m2);
-    
+
     // Calculate k = (m1 - m2) / (s1 - s2) mod n
     let m_diff = (&m1_int - &m2_int) % &n;
     let s_diff = (&s1_int - &s2_int) % &n;
     let s_diff_inv = mod_inverse(&s_diff, &n)?;
     let k = (&m_diff * &s_diff_inv) % &n;
-    
+
     // Calculate private_key = (s1 * k - m1) / r mod n
     let numerator = (&s1_int * &k - &m1_int) % &n;
     let r_inv = mod_inverse(&r_int, &n)?;
     let private_key = (&numerator * &r_inv) % &n;
-    
+
     // Convert to 32-byte array
     let (_sign, bytes) = private_key.to_bytes_be();
     let mut result = vec![0u8; 32];
     let start = 32_usize.saturating_sub(bytes.len());
     result[start..].copy_from_slice(&bytes);
-    
+
     Ok(result)
 }
 

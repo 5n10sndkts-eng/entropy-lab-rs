@@ -137,8 +137,28 @@ The following environment variables are supported:
 ### Running Tests
 
 ```bash
+# Run all tests
 cargo test
+
+# Run comprehensive address validation tests
+cargo test --test address_validation
+
+# Run tests with output (see detailed validation)
+cargo test --test address_validation -- --nocapture
 ```
+
+#### Address Validation Test Suite
+
+The project includes comprehensive address validation tests to ensure correct address generation:
+
+- **Entropy to Mnemonic**: Validates BIP39 entropy conversion with standard test vectors
+- **Mnemonic to Seed**: Tests seed generation from mnemonics
+- **Address Generation**: Tests P2PKH (Legacy), P2WPKH (SegWit), and various derivation paths (BIP44, BIP84, Cake Wallet)
+- **Encoding Validation**: Verifies Base58 and Bech32 encoding correctness
+- **Scanner Validation**: Tests entropy generation patterns used by scanners
+- **Manual Verification**: Provides complete derivation traces for manual verification against online tools
+
+These tests provide "ground truth" for verifying scanner implementations and ensure addresses are generated correctly.
 
 ### Code Quality
 
