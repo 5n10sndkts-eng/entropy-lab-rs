@@ -178,13 +178,16 @@ impl GpuSolver {
         let mut entropies_lo = Vec::with_capacity(batch_size);
 
         for ent in entropies {
-            let hi = u64::from_le_bytes(
-                ent[8..16]
+            // CRITICAL: The OpenCL kernel expects big-endian byte order
+            // The kernel unpacks bytes[0..8] from hi and bytes[8..16] from lo
+            // See batch_address.cl lines 20-37 for how bytes are extracted
+            let hi = u64::from_be_bytes(
+                ent[0..8]
                     .try_into()
                     .expect("Entropy should always be 16 bytes"),
             );
-            let lo = u64::from_le_bytes(
-                ent[0..8]
+            let lo = u64::from_be_bytes(
+                ent[8..16]
                     .try_into()
                     .expect("Entropy should always be 16 bytes"),
             );
