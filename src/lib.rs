@@ -4,3 +4,5 @@
 pub mod electrum_mnemonic;
 pub mod scans;
 pub mod utils;
+#[cfg(feature = "gui")]
+pub mod gui;
