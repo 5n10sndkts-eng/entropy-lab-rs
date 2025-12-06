@@ -1,54 +1,12 @@
 use anyhow::{anyhow, Result};
 use tracing::{info, warn, error};
 use bitcoin::secp256k1::{Secp256k1, SecretKey};
-use bitcoincore_rpc::{Auth, Client, RpcApi};
-use num_bigint::BigInt;
-use num_traits::{One, Zero};
+use bitcoincore_rpc::{Client, RpcApi, Auth};
+use num_bigint::{BigInt, Sign};
+use num_traits::{Num, One, Zero};
 use std::collections::HashMap;
 use std::fs::OpenOptions;
 use std::io::Write;
-
-
-
-
-/// Extract r and s values from a DER signature
-#[allow(dead_code)]
-fn parse_der_signature(sig_bytes: &[u8]) -> Option<(Vec<u8>, Vec<u8>)> {
-    // Minimum DER signature: 0x30 [len] 0x02 [r-len] [r] 0x02 [s-len] [s]
-    if sig_bytes.len() < 8 || sig_bytes[0] != 0x30 {
-        return None;
-    }
-    
-    let total_len = sig_bytes[1] as usize;
-    if sig_bytes.len() != total_len + 2 || sig_bytes[2] != 0x02 {
-        return None;
-    }
-    
-    let r_len = sig_bytes[3] as usize;
-    if sig_bytes.len() < 4 + r_len + 2 {
-        return None;
-    }
-    
-    let r_value = sig_bytes[4..4 + r_len].to_vec();
-    
-    // Check for S value
-    let s_offset = 4 + r_len;
-    if sig_bytes.len() <= s_offset || sig_bytes[s_offset] != 0x02 {
-        return None;
-    }
-    
-    let s_len = sig_bytes[s_offset + 1] as usize;
-    if sig_bytes.len() < s_offset + 2 + s_len {
-        return None;
-    }
-    
-    let s_value = sig_bytes[s_offset + 2..s_offset + 2 + s_len].to_vec();
-    
-    Some((r_value, s_value))
-}
-
-/// Modular inverse using Extended Euclidean Algorithm
-#[allow(dead_code)]
 
 
 /// Recover private key from two signatures with the same R value
@@ -56,40 +14,45 @@ fn parse_der_signature(sig_bytes: &[u8]) -> Option<(Vec<u8>, Vec<u8>)> {
 /// k = (m1 - m2) / (s1 - s2) mod n
 /// private_key = (s1 * k - m1) / r mod n
 #[allow(dead_code)]
-fn recover_private_key(
-    r: &[u8],
-    s1: &[u8],
-    s2: &[u8],
-    m1: &[u8],
-    m2: &[u8],
-) -> Option<Vec<u8>> {
-    let n = BigInt::parse_bytes(SECP256K1_N.as_bytes(), 16)?;
-    
+fn recover_private_key(r: &[u8], s1: &[u8], s2: &[u8], m1: &[u8], m2: &[u8]) -> Result<Vec<u8>> {
+    let n = BigInt::from_str_radix("FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141", 16)?;
+
     // Convert bytes to BigInt
-    let r_int = BigInt::from_bytes_be(num_bigint::Sign::Plus, r);
-    let s1_int = BigInt::from_bytes_be(num_bigint::Sign::Plus, s1);
-    let s2_int = BigInt::from_bytes_be(num_bigint::Sign::Plus, s2);
-    let m1_int = BigInt::from_bytes_be(num_bigint::Sign::Plus, m1);
-    let m2_int = BigInt::from_bytes_be(num_bigint::Sign::Plus, m2);
-    
+    let r_int = BigInt::from_bytes_be(Sign::Plus, r);
+    let s1_int = BigInt::from_bytes_be(Sign::Plus, s1);
+    let s2_int = BigInt::from_bytes_be(Sign::Plus, s2);
+    let m1_int = BigInt::from_bytes_be(Sign::Plus, m1);
+    let m2_int = BigInt::from_bytes_be(Sign::Plus, m2);
+
     // Calculate k = (m1 - m2) / (s1 - s2) mod n
-    let m_diff = (&m1_int - &m2_int) % &n;
-    let s_diff = (&s1_int - &s2_int) % &n;
-    let s_diff_inv = mod_inverse(&s_diff, &n).ok()?;
-    let k = (&m_diff * &s_diff_inv) % &n;
+    let s_diff = (&s1_int - &s2_int + &n) % &n;
+    let s_diff_inv = mod_inverse(&s_diff, &n)?; 
+
+    let m_diff = (&m1_int - &m2_int + &n) % &n;
     
+    // k = (m1 - m2) * (s1 - s2)^-1 mod n
+    let k = (&m_diff * &s_diff_inv) % &n;
+
     // Calculate private_key = (s1 * k - m1) / r mod n
     let numerator = (&s1_int * &k - &m1_int) % &n;
-    let r_inv = mod_inverse(&r_int, &n).ok()?;
-    let private_key = (&numerator * &r_inv) % &n;
+    let numerator = if numerator < BigInt::zero() { numerator + &n } else { numerator };
+
+    let r_inv = mod_inverse(&r_int, &n)?;
     
+    let d = (&numerator * &r_inv) % &n;
+
     // Convert to 32-byte array
-    let (_sign, bytes) = private_key.to_bytes_be();
-    let mut result = vec![0u8; 32];
-    let start = 32_usize.saturating_sub(bytes.len());
-    result[start..].copy_from_slice(&bytes);
+    let (_, d_bytes) = d.to_bytes_be();
     
-    Some(result)
+    // Pad to 32 bytes
+    let mut priv_key = vec![0u8; 32];
+    let len = d_bytes.len();
+    if len > 32 {
+        return Err(anyhow::anyhow!("Private key too large"));
+    }
+    priv_key[32-len..].copy_from_slice(&d_bytes);
+
+    Ok(priv_key)
 }
 
 // Type alias to simplify complex signature data structure

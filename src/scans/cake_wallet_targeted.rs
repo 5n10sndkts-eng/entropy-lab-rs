@@ -78,7 +78,7 @@ pub fn run_targeted() -> Result<()> {
             let results = solver.compute_cake_batch_full(&batch)?;
             
             // Process results
-            for (i, seed_idx) in batch.iter().enumerate() {
+            for (i, _seed_idx) in batch.iter().enumerate() {
                 // Results are flat: 40 public keys per seed
                 // Order: Change 0 (20 addrs), Change 1 (20 addrs)
                 let base = i * 40;
@@ -108,6 +108,5 @@ pub fn run_targeted() -> Result<()> {
     info!("\nScan complete!");
     info!("Total seeds checked: {}", checked);
     info!("Vulnerable seeds found: {}", found);
-    
     Ok(())
 }

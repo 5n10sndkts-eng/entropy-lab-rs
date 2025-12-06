@@ -182,7 +182,7 @@ fn generate_address_from_entropy(entropy: &[u8; 16], addr_index: u32) -> String 
 
     let private_key = bitcoin::PrivateKey::new(derived.private_key, Network::Bitcoin);
     let pubkey = private_key.public_key(&secp);
-    let address = Address::p2pkh(&pubkey, Network::Bitcoin);
+    let address = Address::p2pkh(pubkey, Network::Bitcoin);
 
     address.to_string()
 }

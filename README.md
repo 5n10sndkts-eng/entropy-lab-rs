@@ -12,7 +12,10 @@ This tool includes scanners for the following known vulnerabilities:
 
 ### Implemented Scanners
 
-1. **Cake Wallet (2024)** - Scans for the Cake Wallet entropy vulnerability
+1. **Cake Wallet (2024)** - Scans for the Cake Wallet entropy vulnerability using Electrum seed format
+   - Uses Electrum seed derivation (PBKDF2 with "electrum" salt)
+   - Derivation path: m/0'/0/0 (Electrum format)
+   - Scans 2^20 (1,048,576) entropy space from weak PRNG
 2. **Trust Wallet (2023)** - Reproduces Trust Wallet MT19937 weakness
 3. **Mobile Sensor Entropy** - Tests mobile sensor-based entropy vulnerabilities
 4. **Libbitcoin "Milk Sad"** - Scans for the Milk Sad vulnerability (CVE-2023-39910)
@@ -20,6 +23,9 @@ This tool includes scanners for the following known vulnerabilities:
 6. **Android SecureRandom** - Detects duplicate R values in ECDSA signatures
 7. **Profanity** - Scans for Profanity vanity address vulnerabilities
 8. **Cake Wallet Dart PRNG** - Time-based Dart PRNG vulnerability scanner
+   - Scans 2020-2021 timestamps to find 8,757 vulnerable seeds
+   - Uses Electrum seed format
+   - Documented at milksad.info
 
 ### Features
 
@@ -132,13 +138,49 @@ The following environment variables are supported:
 - Configuration files (added to .gitignore)
 - Secret management systems
 
+### Cake Wallet - Electrum vs BIP39
+
+Cake Wallet uses **Electrum seed format** for Bitcoin wallets, not BIP39. The key differences are:
+
+1. **Seed Derivation**: 
+   - BIP39: PBKDF2-HMAC-SHA512 with salt "mnemonic" + passphrase
+   - Electrum: PBKDF2-HMAC-SHA512 with salt "electrum" + passphrase
+
+2. **Derivation Path**:
+   - BIP44 standard: m/44'/0'/0'/0/0
+   - Electrum for Cake Wallet: m/0'/0/0
+
+3. **Impact**: Using the wrong seed format produces completely different addresses, which explains why scans might find zero vulnerable wallets if using BIP39 instead of Electrum.
+
+This tool correctly implements Electrum seed derivation for Cake Wallet scanners using the `compute_batch_electrum()` method and the `batch_address_electrum.cl` GPU kernel.
+
 ## Development
 
 ### Running Tests
 
 ```bash
+# Run all tests
 cargo test
+
+# Run comprehensive address validation tests
+cargo test --test address_validation
+
+# Run tests with output (see detailed validation)
+cargo test --test address_validation -- --nocapture
 ```
+
+#### Address Validation Test Suite
+
+The project includes comprehensive address validation tests to ensure correct address generation:
+
+- **Entropy to Mnemonic**: Validates BIP39 entropy conversion with standard test vectors
+- **Mnemonic to Seed**: Tests seed generation from mnemonics
+- **Address Generation**: Tests P2PKH (Legacy), P2WPKH (SegWit), and various derivation paths (BIP44, BIP84, Cake Wallet)
+- **Encoding Validation**: Verifies Base58 and Bech32 encoding correctness
+- **Scanner Validation**: Tests entropy generation patterns used by scanners
+- **Manual Verification**: Provides complete derivation traces for manual verification against online tools
+
+These tests provide "ground truth" for verifying scanner implementations and ensure addresses are generated correctly.
 
 ### Code Quality
 
@@ -179,6 +221,17 @@ entropy-lab-rs/
 2. **GPU Features**: Requires OpenCL installation. If not available, the tool will fail at link time. Consider making OpenCL optional via feature flags for systems without GPU support.
 
 3. **Performance**: Some scanners can be computationally intensive. Consider using the `--release` flag for production scanning.
+
+4. **Incomplete Coverage**: This project implements several vulnerability scanners but is missing some critical ones documented at milksad.info:
+   - **📊 [Gap Analysis Summary](GAP_ANALYSIS_SUMMARY.md)** - Executive overview of missing features
+   - **📋 [Detailed Gap Analysis](MILKSAD_GAP_ANALYSIS.md)** - Complete technical analysis
+   
+   **Highest Priority Missing:**
+   - **Randstorm/BitcoinJS (2011-2015)**: Affects 1.4M+ BTC ($1B+ at risk) - Blockchain.info, CoinPunk, BrainWallet
+   - **Electrum seed validation**: Current Cake Wallet scanner may generate invalid seeds
+   - **Trust Wallet iOS (CVE-2024-23660)**: minstd_rand0 LCG variant not implemented
+   - **Multi-path derivation**: Only checks single path and address index 0
+   - **Extended address indices**: Missing ~95%+ of addresses per seed
 
 ## Security & Ethics
 
@@ -237,11 +290,22 @@ This measures throughput for:
 ## Roadmap
 
 - [x] Complete Android SecureRandom private key recovery implementation
+- [ ] **[HIGH PRIORITY]** Implement Randstorm/BitcoinJS scanner (2011-2015 vulnerability)
+- [ ] **[CRITICAL]** Add Electrum seed version prefix validation for Cake Wallet
+- [ ] **[HIGH]** Implement Trust Wallet iOS minstd_rand0 scanner (CVE-2024-23660)
+- [ ] **[HIGH]** Add multi-path derivation support (BIP44/49/84/86)
+- [ ] **[HIGH]** Implement extended address index scanning (0-100+)
+- [ ] **[MEDIUM]** Add bloom filter support for scalable scanning
+- [ ] **[MEDIUM]** Implement bip3x PCG PRNG scanner
+- [ ] **[MEDIUM]** Support 18 and 24-word seed lengths
 - [ ] Add comprehensive integration tests
 - [ ] Make OpenCL dependency optional via feature flags
 - [ ] Add structured logging (replace println! with proper logging)
 - [ ] Improve error handling (reduce unwrap() usage)
 - [ ] Create detailed documentation for each scanner
+- [ ] Complete Profanity vanity address scanner
+
+See [MILKSAD_GAP_ANALYSIS.md](MILKSAD_GAP_ANALYSIS.md) for detailed gap analysis and implementation priorities.
 
 ## License
 
@@ -250,11 +314,15 @@ This project is provided for educational and research purposes. Please review th
 ## Acknowledgments
 
 This research builds upon publicly disclosed vulnerabilities:
-- Trust Wallet MT19937 weakness (2023)
+- Trust Wallet MT19937 weakness (CVE-2023-31290, 2023)
+- Trust Wallet iOS minstd_rand0 weakness (CVE-2024-23660, 2024)
 - Cake Wallet entropy vulnerability (2024)
-- Libbitcoin Milk Sad (CVE-2023-39910)
-- Android SecureRandom Bitcoin vulnerability
-- Profanity vanity address vulnerability
+- Libbitcoin Milk Sad (CVE-2023-39910, 2023)
+- Android SecureRandom Bitcoin vulnerability (2013)
+- Profanity vanity address vulnerability (CVE-2022-40769, 2022)
+- Randstorm/BitcoinJS vulnerability (2011-2015, disclosed 2023)
+
+Special thanks to the [Milk Sad research team](https://milksad.info/) for their comprehensive vulnerability disclosure and ongoing research into weak wallet entropy issues.
 
 ## Disclaimer
 

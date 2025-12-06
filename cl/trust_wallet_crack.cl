@@ -1,5 +1,7 @@
 // Trust Wallet Browser Extension Vulnerability (100% GPU)
 // MT19937 seeded with 32-bit timestamp
+// CRITICAL: Uses LSB (Least Significant Byte) extraction, NOT MSB like Milk Sad
+// Trust Wallet code: return rng() & 0x000000ff (takes LEAST significant 8 bits)
 // Scans timestamp range and matches against target Hash160
 
 __kernel void trust_wallet_crack(

@@ -30,7 +30,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             entropy[i * 4..i * 4 + 4].copy_from_slice(&val.to_be_bytes());
         }
 
-        println!("  Entropy: {}", hex::encode(&entropy));
+        println!("  Entropy: {}", hex::encode(entropy));
 
         // Generate mnemonic
         let mnemonic = Mnemonic::from_entropy(&entropy)?;
@@ -51,7 +51,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         // Generate address
         let private_key = bitcoin::PrivateKey::new(derived.private_key, Network::Bitcoin);
         let pubkey = private_key.public_key(&secp);
-        let address = Address::p2pkh(&pubkey, Network::Bitcoin);
+        let address = Address::p2pkh(pubkey, Network::Bitcoin);
 
         println!("  Address: {}", address);
         println!(

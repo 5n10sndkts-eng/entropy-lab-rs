@@ -1,12 +1,19 @@
 use ocl::{Buffer, MemFlags, ProQue, Device};
 use tracing::{info, error};
 
+// Heuristic multiplier to estimate warp/wavefront size from vector width
+// PreferredVectorWidthInt typically returns 1-4, but warp sizes are 32-64
+// 4 * 8 = 32 (NVIDIA warp), 8 * 8 = 64 (AMD wavefront)
+const VECTOR_WIDTH_TO_WARP_MULTIPLIER: usize = 8;
+
 pub struct GpuSolver {
     pro_que: ProQue,
     kernel_name: String,
     max_work_group_size: usize,
     preferred_work_group_multiple: usize,
+    #[allow(dead_code)]
     max_compute_units: u32,
+    #[allow(dead_code)]
     local_mem_size: u64,
 }
 
@@ -34,6 +41,7 @@ impl GpuSolver {
             "bip39_wordlist_complete",
             "bip39_full",
             "batch_address",
+            "batch_address_electrum",
             "batch_cake_wallet",
             "cake_hash",
             "mobile_sensor_hash",
@@ -58,7 +66,7 @@ impl GpuSolver {
                 ocl::Error::from(e.to_string())
             })?;
             raw_cl_file.push_str(&content);
-            raw_cl_file.push_str("\n");
+            raw_cl_file.push('\n');
         }
         info!(
             "[GPU] Total kernel source size: {} bytes",
@@ -67,7 +75,7 @@ impl GpuSolver {
 
         info!("[GPU] Building OpenCL program...");
         let mut prog_bldr = ocl::Program::builder();
-        
+
         // Add aggressive compiler optimizations
         prog_bldr.src(raw_cl_file).cmplr_opt(
             "-w -cl-fast-relaxed-math -cl-mad-enable -cl-no-signed-zeros -cl-unsafe-math-optimizations"
@@ -76,26 +84,36 @@ impl GpuSolver {
         let pro_que = ProQue::builder().prog_bldr(prog_bldr).dims(1).build()?;
 
         let device = pro_que.device();
-        
+
         // Query device capabilities for optimal work group sizing
-        let max_work_group_size = device.max_wg_size()? as usize;
+        let max_work_group_size = device.max_wg_size()?;
         let max_compute_units = match device.info(ocl::enums::DeviceInfo::MaxComputeUnits)? {
-            ocl::enums::DeviceInfoResult::MaxComputeUnits(n) => n,
-            _ => 1,
+            ocl::enums::DeviceInfoResult::MaxComputeUnits(units) => units,
+            _ => 8, // Safe default
         };
         let local_mem_size = match device.info(ocl::enums::DeviceInfo::LocalMemSize)? {
-            ocl::enums::DeviceInfoResult::LocalMemSize(n) => n,
-            _ => 0,
+            ocl::enums::DeviceInfoResult::LocalMemSize(size) => size,
+            _ => 32768, // Safe default (32KB)
         };
-        
+
         // Determine preferred work group multiple (warp/wavefront size)
-        // Default to 32 if query fails or variant not found
-        let preferred_work_group_multiple = 32;
+        // Use PreferredVectorWidthInt as a proxy for warp/wavefront size
+        let preferred_work_group_multiple =
+            if let Ok(ocl::enums::DeviceInfoResult::PreferredVectorWidthInt(size)) =
+                device.info(ocl::enums::DeviceInfo::PreferredVectorWidthInt)
+            {
+                (size as usize) * VECTOR_WIDTH_TO_WARP_MULTIPLIER
+            } else {
+                32 // Safe default
+            };
 
         info!("[GPU] ✓ GPU solver initialized successfully");
         info!("[GPU] Device: {:?}", device.name()?);
         info!("[GPU] Max work group size: {}", max_work_group_size);
-        info!("[GPU] Preferred work group multiple: {}", preferred_work_group_multiple);
+        info!(
+            "[GPU] Preferred work group multiple: {}",
+            preferred_work_group_multiple
+        );
         info!("[GPU] Max compute units: {}", max_compute_units);
         info!("[GPU] Local memory size: {} KB", local_mem_size / 1024);
 
@@ -119,7 +137,7 @@ impl GpuSolver {
         // and doesn't exceed max_work_group_size
         for i in (1..=(self.max_work_group_size / self.preferred_work_group_multiple)).rev() {
             let local_size = i * self.preferred_work_group_multiple;
-            if global_size % local_size == 0 {
+            if global_size.is_multiple_of(local_size) {
                 return local_size;
             }
         }
@@ -127,23 +145,44 @@ impl GpuSolver {
         // Fall back to preferred multiple
         self.preferred_work_group_multiple
     }
-    
+
     // Calculate optimal batch size based on device compute units
-    fn calculate_optimal_batch_size(&self, work_per_item: usize) -> usize {
+    #[allow(dead_code)]
+    fn calculate_optimal_batch_size(&self, _work_per_item: usize) -> usize {
         // Aim for 2-4 work items per compute unit for good occupancy
         let occupancy_factor = 4;
-        let optimal_size = (self.max_compute_units as usize) * self.max_work_group_size * occupancy_factor;
-        
+        let optimal_size =
+            (self.max_compute_units as usize) * self.max_work_group_size * occupancy_factor;
+
         // Round to nearest preferred work group multiple
-        let rounded = ((optimal_size + self.preferred_work_group_multiple - 1) 
-                      / self.preferred_work_group_multiple) 
-                      * self.preferred_work_group_multiple;
-        
+        let rounded = optimal_size.div_ceil(self.preferred_work_group_multiple)
+            * self.preferred_work_group_multiple;
+
         rounded.max(self.preferred_work_group_multiple)
     }
 
     pub fn compute_batch(
         &self,
+        entropies: &[[u8; 16]],
+        purpose: u32,
+    ) -> ocl::Result<Vec<[u8; 25]>> {
+        self.compute_batch_with_kernel(&self.kernel_name, entropies, purpose)
+    }
+
+    /// Compute addresses using Electrum seed derivation (with "electrum" salt)
+    /// This is specifically for Cake Wallet vulnerability scanning
+    pub fn compute_batch_electrum(
+        &self,
+        entropies: &[[u8; 16]],
+        purpose: u32,
+    ) -> ocl::Result<Vec<[u8; 25]>> {
+        self.compute_batch_with_kernel("batch_address_electrum", entropies, purpose)
+    }
+
+    /// Internal method to compute addresses using a specified kernel
+    fn compute_batch_with_kernel(
+        &self,
+        kernel_name: &str,
         entropies: &[[u8; 16]],
         purpose: u32,
     ) -> ocl::Result<Vec<[u8; 25]>> {
@@ -158,6 +197,9 @@ impl GpuSolver {
         let mut entropies_lo = Vec::with_capacity(batch_size);
 
         for ent in entropies {
+            // CRITICAL: The OpenCL kernel expects big-endian byte order
+            // The kernel unpacks bytes[0..8] from hi and bytes[8..16] from lo
+            // See batch_address.cl lines 20-37 for how bytes are extracted
             let hi = u64::from_be_bytes(
                 ent[0..8]
                     .try_into()
@@ -199,7 +241,7 @@ impl GpuSolver {
 
         let kernel = self
             .pro_que
-            .kernel_builder(&self.kernel_name)
+            .kernel_builder(kernel_name)
             .arg(&buffer_hi)
             .arg(&buffer_lo)
             .arg(&buffer_out)
@@ -261,7 +303,12 @@ impl GpuSolver {
         // Output buffer: result count
         let buffer_count = Buffer::<u32>::builder()
             .queue(self.pro_que.queue().clone())
-            .flags(MemFlags::new().read_write().alloc_host_ptr().copy_host_ptr())
+            .flags(
+                MemFlags::new()
+                    .read_write()
+                    .alloc_host_ptr()
+                    .copy_host_ptr(),
+            )
             .len(1)
             .copy_host_slice(&[0u32])
             .build()?;
@@ -433,14 +480,14 @@ impl GpuSolver {
         let mut h2 = 0u64;
         let mut h3 = 0u32;
 
-        for i in 0..8 {
-            h1 |= (target_h160[i] as u64) << (i * 8);
+        for (i, &byte) in target_h160.iter().enumerate().take(8) {
+            h1 |= (byte as u64) << (i * 8);
         }
-        for i in 0..8 {
-            h2 |= (target_h160[i + 8] as u64) << (i * 8);
+        for (i, &byte) in target_h160.iter().skip(8).enumerate().take(8) {
+            h2 |= (byte as u64) << (i * 8);
         }
-        for i in 0..4 {
-            h3 |= (target_h160[i + 16] as u32) << (i * 8);
+        for (i, &byte) in target_h160.iter().skip(16).enumerate().take(4) {
+            h3 |= (byte as u32) << (i * 8);
         }
 
         // Output buffers (with pinned memory for faster results readback)
@@ -453,16 +500,21 @@ impl GpuSolver {
 
         let buffer_count = Buffer::<u32>::builder()
             .queue(self.pro_que.queue().clone())
-            .flags(MemFlags::new().read_write().alloc_host_ptr().copy_host_ptr())
+            .flags(
+                MemFlags::new()
+                    .read_write()
+                    .alloc_host_ptr()
+                    .copy_host_ptr(),
+            )
             .len(1)
             .copy_host_slice(&[0u32])
             .build()?;
 
         // Search space: 201 * 201 * 201 = 8,120,601
-        let range = 201 * 201 * 201;
+        let range: usize = 201 * 201 * 201;
         // Use device-specific local work size
         let local_work_size = self.max_work_group_size.min(256);
-        let global_work_size = ((range + local_work_size - 1) / local_work_size) * local_work_size;
+        let global_work_size = range.div_ceil(local_work_size) * local_work_size;
         let offset: u64 = 0;
 
         let kernel = self
@@ -525,14 +577,14 @@ impl GpuSolver {
         let mut t2: u64 = 0;
         let mut t3: u32 = 0;
 
-        for i in 0..8 {
-            t1 |= (target_addr[i] as u64) << (i * 8);
+        for (i, &byte) in target_addr.iter().enumerate().take(8) {
+            t1 |= (byte as u64) << (i * 8);
         }
-        for i in 0..8 {
-            t2 |= (target_addr[i + 8] as u64) << (i * 8);
+        for (i, &byte) in target_addr.iter().skip(8).enumerate().take(8) {
+            t2 |= (byte as u64) << (i * 8);
         }
-        for i in 0..4 {
-            t3 |= (target_addr[i + 16] as u32) << (i * 8);
+        for (i, &byte) in target_addr.iter().skip(16).enumerate().take(4) {
+            t3 |= (byte as u32) << (i * 8);
         }
 
         // Create kernel
@@ -602,14 +654,14 @@ impl GpuSolver {
         let mut h2: u64 = 0;
         let mut h3: u32 = 0;
 
-        for i in 0..8 {
-            h1 |= (target_h160[i] as u64) << (i * 8);
+        for (i, &byte) in target_h160.iter().enumerate().take(8) {
+            h1 |= (byte as u64) << (i * 8);
         }
-        for i in 0..8 {
-            h2 |= (target_h160[i + 8] as u64) << (i * 8);
+        for (i, &byte) in target_h160.iter().skip(8).enumerate().take(8) {
+            h2 |= (byte as u64) << (i * 8);
         }
-        for i in 0..4 {
-            h3 |= (target_h160[i + 16] as u32) << (i * 8);
+        for (i, &byte) in target_h160.iter().skip(16).enumerate().take(4) {
+            h3 |= (byte as u32) << (i * 8);
         }
 
         let kernel = self
@@ -627,7 +679,7 @@ impl GpuSolver {
         // Use device-optimized work group size
         let local_work_size = self.max_work_group_size.min(256);
         // Round up to nearest multiple of local_work_size
-        let global_work_size = ((range + local_work_size - 1) / local_work_size) * local_work_size;
+        let global_work_size = range.div_ceil(local_work_size) * local_work_size;
 
         unsafe {
             kernel
@@ -809,14 +861,14 @@ impl GpuSolver {
         let mut h2: u64 = 0;
         let mut h3: u32 = 0;
 
-        for i in 0..8 {
-            h1 |= (target_h160[i] as u64) << (i * 8);
+        for (i, &byte) in target_h160.iter().enumerate().take(8) {
+            h1 |= (byte as u64) << (i * 8);
         }
-        for i in 0..8 {
-            h2 |= (target_h160[i + 8] as u64) << (i * 8);
+        for (i, &byte) in target_h160.iter().skip(8).enumerate().take(8) {
+            h2 |= (byte as u64) << (i * 8);
         }
-        for i in 0..4 {
-            h3 |= (target_h160[i + 16] as u32) << (i * 8);
+        for (i, &byte) in target_h160.iter().skip(16).enumerate().take(4) {
+            h3 |= (byte as u32) << (i * 8);
         }
 
         let kernel = self
@@ -834,7 +886,7 @@ impl GpuSolver {
         // Use device-optimized work group size
         let local_work_size = self.max_work_group_size.min(256);
         // Round up to nearest multiple of local_work_size
-        let global_work_size = ((range + local_work_size - 1) / local_work_size) * local_work_size;
+        let global_work_size = range.div_ceil(local_work_size) * local_work_size;
 
         unsafe {
             kernel
@@ -890,14 +942,14 @@ impl GpuSolver {
         let mut h2: u64 = 0;
         let mut h3: u32 = 0;
 
-        for i in 0..8 {
-            h1 |= (target_h160[i] as u64) << (i * 8);
+        for (i, &byte) in target_h160.iter().enumerate().take(8) {
+            h1 |= (byte as u64) << (i * 8);
         }
-        for i in 0..8 {
-            h2 |= (target_h160[i + 8] as u64) << (i * 8);
+        for (i, &byte) in target_h160.iter().skip(8).enumerate().take(8) {
+            h2 |= (byte as u64) << (i * 8);
         }
-        for i in 0..4 {
-            h3 |= (target_h160[i + 16] as u32) << (i * 8);
+        for (i, &byte) in target_h160.iter().skip(16).enumerate().take(4) {
+            h3 |= (byte as u32) << (i * 8);
         }
 
         let kernel = self
@@ -914,7 +966,7 @@ impl GpuSolver {
         let range = (end_timestamp - start_timestamp) as usize;
         // Use device-optimized work group size
         let local_work_size = self.max_work_group_size.min(256);
-        let global_work_size = ((range + local_work_size - 1) / local_work_size) * local_work_size;
+        let global_work_size = range.div_ceil(local_work_size) * local_work_size;
 
         unsafe {
             kernel
@@ -934,8 +986,7 @@ impl GpuSolver {
             buffer_results.read(&mut results).enq()?;
 
             let mut output = Vec::new();
-            for i in 0..read_count {
-                let val = results[i];
+            for &val in results.iter().take(read_count) {
                 let timestamp = (val & 0xFFFFFFFF) as u32;
                 let addr_idx = (val >> 32) as u32;
                 output.push((timestamp, addr_idx));
@@ -991,35 +1042,42 @@ impl GpuSolver {
 
         Ok(results)
     }
-    
+
     /// Get GPU device information for debugging and profiling
     pub fn device_info(&self) -> ocl::Result<String> {
         let device = self.pro_que.device();
         let name = device.name()?;
         let vendor = device.vendor()?;
         let version = device.version()?;
-        let driver = device.version()?;
+        let driver = match device.info(ocl::enums::DeviceInfo::DriverVersion)? {
+            ocl::enums::DeviceInfoResult::DriverVersion(v) => v,
+            _ => "Unknown".to_string(),
+        };
+
         let compute_units = match device.info(ocl::enums::DeviceInfo::MaxComputeUnits)? {
-            ocl::enums::DeviceInfoResult::MaxComputeUnits(n) => n,
+            ocl::enums::DeviceInfoResult::MaxComputeUnits(units) => units,
             _ => 0,
         };
+
         let clock_freq = match device.info(ocl::enums::DeviceInfo::MaxClockFrequency)? {
-            ocl::enums::DeviceInfoResult::MaxClockFrequency(n) => n,
+            ocl::enums::DeviceInfoResult::MaxClockFrequency(freq) => freq,
             _ => 0,
         };
+
         let global_mem = match device.info(ocl::enums::DeviceInfo::GlobalMemSize)? {
-            ocl::enums::DeviceInfoResult::GlobalMemSize(n) => n,
+            ocl::enums::DeviceInfoResult::GlobalMemSize(size) => size / (1024 * 1024),
             _ => 0,
-        } / (1024 * 1024); // MB
+        };
+
         let local_mem = match device.info(ocl::enums::DeviceInfo::LocalMemSize)? {
-            ocl::enums::DeviceInfoResult::LocalMemSize(n) => n,
+            ocl::enums::DeviceInfoResult::LocalMemSize(size) => size / 1024,
             _ => 0,
-        } / 1024; // KB
+        };
+
         let max_alloc = match device.info(ocl::enums::DeviceInfo::MaxMemAllocSize)? {
-            ocl::enums::DeviceInfoResult::MaxMemAllocSize(n) => n,
+            ocl::enums::DeviceInfoResult::MaxMemAllocSize(size) => size / (1024 * 1024),
             _ => 0,
-        } / (1024 * 1024); // MB
-        
+        };
         Ok(format!(
             "GPU Device Information:\n\
              Name: {}\n\
@@ -1033,9 +1091,17 @@ impl GpuSolver {
              Max Allocation: {} MB\n\
              Max Work Group Size: {}\n\
              Preferred Multiple: {}",
-            name, vendor, version, driver,
-            compute_units, clock_freq, global_mem, local_mem, max_alloc,
-            self.max_work_group_size, self.preferred_work_group_multiple
+            name,
+            vendor,
+            version,
+            driver,
+            compute_units,
+            clock_freq,
+            global_mem,
+            local_mem,
+            max_alloc,
+            self.max_work_group_size,
+            self.preferred_work_group_multiple
         ))
     }
 }

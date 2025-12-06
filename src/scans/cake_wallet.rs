@@ -14,6 +14,7 @@ use std::str::FromStr;
 
 /// Simulates the Cake Wallet vulnerability by generating wallets from a limited entropy source.
 /// The vulnerability was due to a weak PRNG with effectively 20 bits of entropy.
+/// Cake Wallet uses Electrum seed format with derivation path m/0'/0/0.
 /// We will simulate this by iterating through a subset of this space.
 pub fn run(limit: Option<u32>) -> Result<()> {
     info!("Reproducing Cake Wallet Vulnerability (Weak PRNG)...");
@@ -158,6 +159,7 @@ mod tests {
     fn test_weak_prng_reproducibility() {
         // Verify that seed index 0 always produces the same address
         // This confirms our "weak PRNG" simulation is deterministic
+        // Using Electrum seed derivation (PBKDF2 with "electrum" salt)
         let i = 0;
         let mut entropy = [0u8; 32];
         entropy[0..4].copy_from_slice(&(i as u32).to_be_bytes());
@@ -166,10 +168,11 @@ mod tests {
         // Use Electrum seed derivation
         let mnemonic_str = mnemonic.to_string();
         let seed = crate::utils::electrum::mnemonic_to_seed(&mnemonic_str);
-        
         let network = Network::Bitcoin;
         let secp = Secp256k1::new();
         let root = Xpriv::new_master(network, &seed).unwrap();
+
+        // Electrum path for Cake Wallet: m/0'/0/0
         let path = DerivationPath::from_str("m/0'/0/0").unwrap();
         let child = root.derive_priv(&secp, &path).unwrap();
         let pubkey = child.to_keypair(&secp).public_key();
