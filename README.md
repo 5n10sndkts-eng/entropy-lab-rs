@@ -222,6 +222,14 @@ entropy-lab-rs/
 
 3. **Performance**: Some scanners can be computationally intensive. Consider using the `--release` flag for production scanning.
 
+4. **Incomplete Coverage**: See [MILKSAD_GAP_ANALYSIS.md](MILKSAD_GAP_ANALYSIS.md) for a comprehensive analysis of missing vulnerability scanners and features compared to milksad.info research. Notable missing scanners:
+   - **Randstorm/BitcoinJS (2011-2015)**: Math.random() + JSBN vulnerability affecting Blockchain.info, CoinPunk, and others
+   - **Trust Wallet iOS (CVE-2024-23660)**: minstd_rand0 LCG PRNG variant
+   - **bip3x Library**: PCG-XSH-RR PRNG vulnerability
+   - **Multi-path derivation**: BIP44/49/84/86 support
+   - **Extended address indices**: Currently only checks index 0
+   - **Electrum seed validation**: Missing version prefix checks for Cake Wallet
+
 ## Security & Ethics
 
 This tool is intended for:
@@ -279,11 +287,22 @@ This measures throughput for:
 ## Roadmap
 
 - [x] Complete Android SecureRandom private key recovery implementation
+- [ ] **[HIGH PRIORITY]** Implement Randstorm/BitcoinJS scanner (2011-2015 vulnerability)
+- [ ] **[CRITICAL]** Add Electrum seed version prefix validation for Cake Wallet
+- [ ] **[HIGH]** Implement Trust Wallet iOS minstd_rand0 scanner (CVE-2024-23660)
+- [ ] **[HIGH]** Add multi-path derivation support (BIP44/49/84/86)
+- [ ] **[HIGH]** Implement extended address index scanning (0-100+)
+- [ ] **[MEDIUM]** Add bloom filter support for scalable scanning
+- [ ] **[MEDIUM]** Implement bip3x PCG PRNG scanner
+- [ ] **[MEDIUM]** Support 18 and 24-word seed lengths
 - [ ] Add comprehensive integration tests
 - [ ] Make OpenCL dependency optional via feature flags
 - [ ] Add structured logging (replace println! with proper logging)
 - [ ] Improve error handling (reduce unwrap() usage)
 - [ ] Create detailed documentation for each scanner
+- [ ] Complete Profanity vanity address scanner
+
+See [MILKSAD_GAP_ANALYSIS.md](MILKSAD_GAP_ANALYSIS.md) for detailed gap analysis and implementation priorities.
 
 ## License
 
@@ -292,11 +311,15 @@ This project is provided for educational and research purposes. Please review th
 ## Acknowledgments
 
 This research builds upon publicly disclosed vulnerabilities:
-- Trust Wallet MT19937 weakness (2023)
+- Trust Wallet MT19937 weakness (CVE-2023-31290, 2023)
+- Trust Wallet iOS minstd_rand0 weakness (CVE-2024-23660, 2023)
 - Cake Wallet entropy vulnerability (2024)
-- Libbitcoin Milk Sad (CVE-2023-39910)
-- Android SecureRandom Bitcoin vulnerability
-- Profanity vanity address vulnerability
+- Libbitcoin Milk Sad (CVE-2023-39910, 2023)
+- Android SecureRandom Bitcoin vulnerability (2013)
+- Profanity vanity address vulnerability (CVE-2022-40769, 2022)
+- Randstorm/BitcoinJS vulnerability (2011-2015, disclosed 2023)
+
+Special thanks to the [Milk Sad research team](https://milksad.info/) for their comprehensive vulnerability disclosure and ongoing research into weak wallet entropy issues.
 
 ## Disclaimer
 
