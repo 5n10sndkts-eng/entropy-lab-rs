@@ -55,7 +55,7 @@ pub fn run() -> Result<()> {
                 for addr in addresses.iter() {
                     // Output for pipe to check_mnemonics.py
                     // Format: ADDRESS: <hex>
-                    // Note: Cake uses Segwit (bc1...) so output is 20-byte witness program
+                    // Note: Cake Wallet uses P2WPKH SegWit (bc1q...) - output is 20-byte witness program
                     println!("ADDRESS: {}", hex::encode(addr));
                 }
             }

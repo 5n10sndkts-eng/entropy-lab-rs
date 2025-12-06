@@ -141,7 +141,8 @@ __kernel void batch_address_electrum(
   uchar raw_address[25] = {0};
 
   if (purpose == 0) {
-      // Cake Wallet: P2PKH (Legacy 1...)
+      // Cake Wallet: P2WPKH (Native SegWit - Electrum default)
+      // Electrum wallets use SegWit by default (bc1q addresses)
       uchar sha256_result[32] __attribute__((aligned(4)));
       uchar ripemd160_result[20];
       uchar serialized_pubkey[33] __attribute__((aligned(4)));
@@ -150,20 +151,8 @@ __kernel void batch_address_electrum(
       sha256((__private const uint*)serialized_pubkey, 33, (__private uint*)sha256_result);
       ripemd160(sha256_result, 32, ripemd160_result);
       
-      raw_address[0] = 0x00; // Mainnet
-      for(int i=0; i<20; i++) raw_address[i+1] = ripemd160_result[i];
-      
-      // Checksum
-      uchar raw_address_aligned[32] __attribute__((aligned(4)));
-      for(int i=0; i<21; i++) raw_address_aligned[i] = raw_address[i];
-      
-      sha256((__private const uint*)raw_address_aligned, 21, (__private uint*)sha256_result);
-      sha256((__private const uint*)sha256_result, 32, (__private uint*)sha256_result);
-      
-      raw_address[21] = sha256_result[0];
-      raw_address[22] = sha256_result[1];
-      raw_address[23] = sha256_result[2];
-      raw_address[24] = sha256_result[3];
+      // P2WPKH: Just the 20-byte witness program (no version byte or checksum)
+      for(int i=0; i<20; i++) raw_address[i] = ripemd160_result[i];
   } else if (purpose == 100) {
       // Milk Sad (Libbitcoin): MT19937 seeded with timestamp
       // Input: entropies_hi[idx] contains the timestamp (cast to uint)
