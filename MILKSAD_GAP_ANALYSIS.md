@@ -293,7 +293,7 @@ fn validate_electrum_segwit_prefix(mnemonic: &str) -> bool {
 ### 16. ⚠️ Cake Wallet Hash Count Discrepancy
 
 **Milksad.info Update #10:** 8,757 unique weak wallets  
-**Our file:** 8,717 hashes  
+**Our file (`cakewallet_vulnerable_hashes.txt`):** 8,717 hashes  
 **Difference:** 40 wallets missing
 
 **Required:** Update hash list from latest milksad.info data
