@@ -1,3 +1,4 @@
+#[cfg(feature = "gpu")]
 use crate::scans::gpu_solver::GpuSolver;
 use anyhow::Result;
 use bip39::Mnemonic;
@@ -29,6 +30,12 @@ pub fn run_targeted() -> Result<()> {
     info!("Loaded {} vulnerable mnemonic hashes", vulnerable_hashes.len());
     info!("Initializing GPU Solver...");
 
+    #[cfg(not(feature = "gpu"))]
+    {
+        anyhow::bail!("This scanner requires GPU acceleration. Please recompile with --features gpu");
+    }
+
+    #[cfg(feature = "gpu")]
     let solver = GpuSolver::new()?;
     let network = Network::Bitcoin;
 

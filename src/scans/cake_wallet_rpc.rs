@@ -1,3 +1,4 @@
+#[cfg(feature = "gpu")]
 use crate::scans::gpu_solver::GpuSolver;
 use anyhow::Result;
 use bip39::Mnemonic;
@@ -28,6 +29,14 @@ pub fn run(rpc_url: &str, rpc_user: &str, rpc_pass: &str) -> Result<()> {
 
     // Initialize GPU
     println!("Initializing GPU...");
+    
+    #[cfg(not(feature = "gpu"))]
+    {
+        println!("GPU feature not enabled. Running CPU-only mode...");
+        return run_cpu_only(rpc_url, rpc_user, rpc_pass);
+    }
+
+    #[cfg(feature = "gpu")]
     let solver = match GpuSolver::new() {
         Ok(s) => {
             println!("GPU initialized successfully!");

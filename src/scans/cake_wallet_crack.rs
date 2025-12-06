@@ -1,22 +1,21 @@
-use crate::scans::gpu_solver::GpuSolver;
-use anyhow::Result;
-use tracing::{info, warn};
+//! Cake Wallet GPU Cracker
+//! 
+//! This module requires GPU acceleration. Compile with `--features gpu`
 
-/// Cake Wallet GPU Cracker
-/// Target: Find seed from a specialized Cake Wallet address (bc1q...)
-/// Strategy:
-/// 1. GPU iterates 0..2^32 seed indices
-/// 2. GPU checks "100" Electrum prefix (reduces search space to ~1M)
-/// 3. GPU checks 40 addresses (Change 0/1 * Index 0-19)
-/// 4. Returns (seed_index, change, address_index)
-pub fn run_crack(target_address: &str) -> Result<()> {
+#[cfg(not(feature = "gpu"))]
+pub fn run_crack(_target_address: &str) -> anyhow::Result<()> {
+    anyhow::bail!("This scanner requires GPU acceleration. Please recompile with --features gpu")
+}
+
+#[cfg(feature = "gpu")]
+pub fn run_crack(target_address: &str) -> anyhow::Result<()> {
+    use crate::scans::gpu_solver::GpuSolver;
+    use tracing::{info, warn};
+
     info!("Cake Wallet GPU Cracker");
     info!("Target: {}", target_address);
 
     // Parse target address to Hash160
-    // Support P2WPKH (bc1q) and P2PKH (1...)
-    // Parse target address to Hash160
-    // Support P2WPKH (bc1q) and P2PKH (1...)
     let target_h160 = if target_address.starts_with("bc1q") {
         use bitcoin::Address;
         use std::str::FromStr;
@@ -29,7 +28,6 @@ pub fn run_crack(target_address: &str) -> Result<()> {
         h160
     } else {
         let bytes = bs58::decode(target_address).into_vec()?;
-        // Version(1) + Hash160(20) + Checksum(4)
         if bytes.len() != 25 { anyhow::bail!("Invalid address length"); }
         let h160: [u8; 20] = bytes[1..21].try_into()?;
         h160
@@ -39,8 +37,8 @@ pub fn run_crack(target_address: &str) -> Result<()> {
     info!("Initializing GPU Solver...");
 
     let solver = GpuSolver::new()?;
-    let total_seeds = 0xFFFFFFFFu32; // 2^32
-    let batch_size = 1 << 24; // 16M per batch
+    let total_seeds = 0xFFFFFFFFu32;
+    let batch_size = 1 << 24;
 
     info!("Starting scan of 2^32 seeds...");
 
@@ -57,9 +55,6 @@ pub fn run_crack(target_address: &str) -> Result<()> {
             warn!("!!! FOUND MATCH !!!");
             warn!("Seed Index: {}", seed_idx);
             warn!("Path: m/0'/{}/{}", change, addr_idx);
-            
-            // Reconstruct logic for verification/display logic here if needed
-            // But kernel match is strong enough
         }
         
         offset += count;
