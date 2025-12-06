@@ -1,5 +1,5 @@
-use ocl::{Buffer, MemFlags, ProQue, Device};
-use tracing::{info, error};
+use ocl::{Buffer, Device, MemFlags, ProQue};
+use tracing::{error, info};
 
 // Heuristic multiplier to estimate warp/wavefront size from vector width
 // PreferredVectorWidthInt typically returns 1-4, but warp sizes are 32-64
@@ -736,9 +736,15 @@ impl GpuSolver {
         let mut h1 = 0u64;
         let mut h2 = 0u64;
         let mut h3 = 0u32;
-        for i in 0..8 { h1 |= (target_h160[i] as u64) << (i * 8); }
-        for i in 0..8 { h2 |= (target_h160[i + 8] as u64) << (i * 8); }
-        for i in 0..4 { h3 |= (target_h160[i + 16] as u32) << (i * 8); }
+        for i in 0..8 {
+            h1 |= (target_h160[i] as u64) << (i * 8);
+        }
+        for i in 0..8 {
+            h2 |= (target_h160[i + 8] as u64) << (i * 8);
+        }
+        for i in 0..4 {
+            h3 |= (target_h160[i + 16] as u32) << (i * 8);
+        }
 
         let kernel = self
             .pro_que
@@ -753,7 +759,9 @@ impl GpuSolver {
             // Use default local work size or tune it
             .build()?;
 
-        unsafe { kernel.enq()?; }
+        unsafe {
+            kernel.enq()?;
+        }
 
         // Read count
         let mut count_vec = vec![0u32; 1];
@@ -782,13 +790,12 @@ impl GpuSolver {
     /// Takes a list of verified seed indices.
     /// Derives 40 addresses for each seed: change 0/1 * index 0-19.
     /// Returns: Flattened vector of 33-byte Compressed Public Keys (count * 40 items).
-    pub fn compute_cake_batch_full(
-        &self,
-        seed_indices: &[u32],
-    ) -> ocl::Result<Vec<[u8; 33]>> {
+    pub fn compute_cake_batch_full(&self, seed_indices: &[u32]) -> ocl::Result<Vec<[u8; 33]>> {
         let kernel_name = "batch_cake_full";
         let batch_size = seed_indices.len();
-        if batch_size == 0 { return Ok(Vec::new()); }
+        if batch_size == 0 {
+            return Ok(Vec::new());
+        }
 
         // Input buffer: Seed indices
         let buffer_seeds = Buffer::<u32>::builder()
@@ -816,7 +823,9 @@ impl GpuSolver {
             .global_work_size(batch_size)
             .build()?;
 
-        unsafe { kernel.enq()?; }
+        unsafe {
+            kernel.enq()?;
+        }
 
         // Read results
         let mut results_bytes = vec![0u8; total_output_bytes];

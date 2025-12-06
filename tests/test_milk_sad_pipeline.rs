@@ -115,7 +115,10 @@ fn test_milk_sad_gpu_address_match() {
             if results.contains(&(test_timestamp as u64)) {
                 println!("✓ GPU found correct timestamp: {}", test_timestamp);
             } else if !results.is_empty() {
-                println!("Found timestamps: {:?} (expected {})", results, test_timestamp);
+                println!(
+                    "Found timestamps: {:?} (expected {})",
+                    results, test_timestamp
+                );
                 panic!("GPU found wrong timestamp!");
             } else {
                 println!("✗ GPU did not find the timestamp");

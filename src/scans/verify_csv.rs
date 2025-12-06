@@ -124,7 +124,7 @@ pub fn run(csv_path: &str, address_list_path: &str) -> Result<()> {
     if !batch.is_empty() {
         process_batch(&batch, &bloom, &secp, &hits)?;
     }
-    
+
     let potential_hits = hits
         .lock()
         .expect("Failed to lock hits mutex - this indicates a critical threading issue");

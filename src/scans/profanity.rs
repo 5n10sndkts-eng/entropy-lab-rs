@@ -1,8 +1,8 @@
 #[cfg(feature = "gpu")]
 use crate::scans::gpu_solver::GpuSolver;
-use anyhow::Result;
 #[cfg(feature = "gpu")]
 use anyhow::Context;
+use anyhow::Result;
 #[cfg(feature = "gpu")]
 use tracing::{info, warn};
 

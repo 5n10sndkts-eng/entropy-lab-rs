@@ -1,7 +1,7 @@
 use anyhow::{anyhow, Result};
+use bitcoin::secp256k1::{PublicKey, Secp256k1, SecretKey};
+use bitcoin::{Address, CompressedPublicKey, Network};
 use tracing::{info, warn};
-use bitcoin::secp256k1::{Secp256k1, SecretKey, PublicKey};
-use bitcoin::{Address, Network, CompressedPublicKey};
 
 /// Generic "Ec-New" Scanner
 /// Vulnerability: Private key generated directly from PRNG (MT19937) seeded with timestamp
@@ -9,9 +9,9 @@ use bitcoin::{Address, Network, CompressedPublicKey};
 /// Use: bx ec-new (with weak RNG)
 pub fn run(target_address: &str, start_ts: Option<u32>, end_ts: Option<u32>) -> Result<()> {
     info!("Running EC-New (Direct PRNG) Vulnerability Scanner...");
-    
+
     // Default range: 2011-2024 if not specified
-    let start = start_ts.unwrap_or(1300000000); 
+    let start = start_ts.unwrap_or(1300000000);
     let end = end_ts.unwrap_or(1735689600); // Jan 1 2025
 
     info!("Target: {}", target_address);
@@ -20,7 +20,8 @@ pub fn run(target_address: &str, start_ts: Option<u32>, end_ts: Option<u32>) -> 
     let secp = Secp256k1::new();
     let network = Network::Bitcoin;
 
-    let target_addr_obj = target_address.parse::<Address<_>>()
+    let target_addr_obj = target_address
+        .parse::<Address<_>>()
         .map_err(|e| anyhow!("Invalid target address: {}", e))?
         .require_network(network)?;
 
@@ -31,12 +32,12 @@ pub fn run(target_address: &str, start_ts: Option<u32>, end_ts: Option<u32>) -> 
     for t in start..=end {
         // Generate 32 bytes of "randomness" from MT19937 seeded with timestamp
         let entropy_32 = generate_mt19937_32bytes(t);
-        
+
         // 2. Treat as Private Key
         if let Ok(sk) = SecretKey::from_slice(&entropy_32) {
             let pk = PublicKey::from_secret_key(&secp, &sk);
             let address = Address::p2pkh(CompressedPublicKey(pk), network);
-            
+
             if address == target_addr_obj {
                 warn!("\n🎯 FOUND MATCH!");
                 warn!("Timestamp: {}", t);
@@ -49,8 +50,12 @@ pub fn run(target_address: &str, start_ts: Option<u32>, end_ts: Option<u32>) -> 
 
         checked += 1;
         if checked.is_multiple_of(1_000_000) {
-             let elapsed = start_time.elapsed().as_secs_f64();
-             info!("Checked {} timestamps ({} M/s)", checked, checked as f64 / elapsed / 1_000_000.0);
+            let elapsed = start_time.elapsed().as_secs_f64();
+            info!(
+                "Checked {} timestamps ({} M/s)",
+                checked,
+                checked as f64 / elapsed / 1_000_000.0
+            );
         }
     }
 
@@ -59,7 +64,7 @@ pub fn run(target_address: &str, start_ts: Option<u32>, end_ts: Option<u32>) -> 
     } else {
         info!("Scan complete. No match found in range.");
     }
-    
+
     Ok(())
 }
 
@@ -70,14 +75,14 @@ fn generate_mt19937_32bytes(seed: u32) -> [u8; 32] {
     // Copy logic for speed/control.
     let mut mt = Mt19937::new(seed);
     let mut bytes = [0u8; 32];
-    
+
     for i in 0..8 {
         let val = mt.next_u32();
         // MSB extraction (Big Endian-ish)
-        bytes[i*4] = (val >> 24) as u8;
-        bytes[i*4+1] = (val >> 16) as u8;
-        bytes[i*4+2] = (val >> 8) as u8;
-        bytes[i*4+3] = val as u8;
+        bytes[i * 4] = (val >> 24) as u8;
+        bytes[i * 4 + 1] = (val >> 16) as u8;
+        bytes[i * 4 + 2] = (val >> 8) as u8;
+        bytes[i * 4 + 3] = val as u8;
     }
     bytes
 }
@@ -92,7 +97,7 @@ impl Mt19937 {
         let mut mt = [0u32; 624];
         mt[0] = seed;
         for i in 1..624 {
-            let prev = mt[i-1];
+            let prev = mt[i - 1];
             mt[i] = (1812433253u64 * (prev ^ (prev >> 30)) as u64 + i as u64) as u32;
         }
         Self { mt, index: 624 }

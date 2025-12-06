@@ -1,5 +1,5 @@
 //! Cake Wallet GPU Cracker
-//! 
+//!
 //! This module requires GPU acceleration. Compile with `--features gpu`
 
 #[cfg(not(feature = "gpu"))]
@@ -20,15 +20,21 @@ pub fn run_crack(target_address: &str) -> anyhow::Result<()> {
         use bitcoin::Address;
         use std::str::FromStr;
         let addr = Address::from_str(target_address)?.require_network(bitcoin::Network::Bitcoin)?;
-        let witness_program = addr.witness_program().ok_or_else(|| anyhow::anyhow!("Not a witness address"))?;
+        let witness_program = addr
+            .witness_program()
+            .ok_or_else(|| anyhow::anyhow!("Not a witness address"))?;
         let prog = witness_program.program();
-        if prog.len() != 20 { anyhow::bail!("Witness program must be 20 bytes for P2WPKH"); }
+        if prog.len() != 20 {
+            anyhow::bail!("Witness program must be 20 bytes for P2WPKH");
+        }
         let mut h160 = [0u8; 20];
         h160.copy_from_slice(prog.as_bytes());
         h160
     } else {
         let bytes = bs58::decode(target_address).into_vec()?;
-        if bytes.len() != 25 { anyhow::bail!("Invalid address length"); }
+        if bytes.len() != 25 {
+            anyhow::bail!("Invalid address length");
+        }
         let h160: [u8; 20] = bytes[1..21].try_into()?;
         h160
     };
@@ -47,22 +53,27 @@ pub fn run_crack(target_address: &str) -> anyhow::Result<()> {
 
     while offset < total_seeds {
         let count = std::cmp::min(batch_size, total_seeds - offset);
-        
+
         let hits = solver.compute_cake_wallet_crack(offset, count, &target_h160)?;
-        
+
         for (seed_idx, change, addr_idx) in hits {
             found = true;
             warn!("!!! FOUND MATCH !!!");
             warn!("Seed Index: {}", seed_idx);
             warn!("Path: m/0'/{}/{}", change, addr_idx);
         }
-        
+
         offset += count;
         if offset % (batch_size * 4) == 0 {
-            info!("Progress: {:.1}%", (offset as f64 / total_seeds as f64) * 100.0);
+            info!(
+                "Progress: {:.1}%",
+                (offset as f64 / total_seeds as f64) * 100.0
+            );
         }
-        
-        if offset >= total_seeds { break; }
+
+        if offset >= total_seeds {
+            break;
+        }
     }
 
     if !found {

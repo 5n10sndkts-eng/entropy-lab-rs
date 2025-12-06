@@ -1,14 +1,14 @@
 #[cfg(feature = "gpu")]
 use crate::scans::gpu_solver::GpuSolver;
+use crate::utils::electrum;
 use anyhow::Result;
 use bip39::Mnemonic;
 use bitcoin::bip32::{DerivationPath, Xpriv};
 use bitcoin::secp256k1::Secp256k1;
 use bitcoin::{Address, Network};
 use bitcoincore_rpc::{Auth, Client, RpcApi};
-use crate::utils::electrum;
 use std::str::FromStr;
-use tracing::{info, warn, error};
+use tracing::{error, info, warn};
 
 #[cfg(feature = "gpu")]
 use std::io::Write;
@@ -31,7 +31,7 @@ pub fn run(rpc_url: &str, rpc_user: &str, rpc_pass: &str) -> Result<()> {
 
     // Initialize GPU
     println!("Initializing GPU...");
-    
+
     #[cfg(not(feature = "gpu"))]
     {
         println!("GPU feature not enabled. Running CPU-only mode...");
@@ -114,7 +114,9 @@ pub fn run(rpc_url: &str, rpc_user: &str, rpc_pass: &str) -> Result<()> {
                                     // Regenerate mnemonic for display (CPU)
                                     let mut entropy_full = [0u8; 32];
                                     entropy_full[0..4].copy_from_slice(&(i as u32).to_be_bytes());
-                                    if let Ok(mnemonic) = Mnemonic::from_entropy(&entropy_full[0..16]) {
+                                    if let Ok(mnemonic) =
+                                        Mnemonic::from_entropy(&entropy_full[0..16])
+                                    {
                                         found += 1;
                                         println!(
                                             "\n🎯 FOUND! Seed: {}, Path: {}, Address: {}, Amount: {} BTC",

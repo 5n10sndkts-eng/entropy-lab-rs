@@ -2,17 +2,17 @@
 use crate::scans::gpu_solver::GpuSolver;
 use anyhow::Result;
 #[cfg(feature = "gpu")]
-use tracing::{info, warn};
-#[cfg(feature = "gpu")]
-use sha2::{Digest, Sha256};
-#[cfg(feature = "gpu")]
-use bitcoin::{Address, Network};
-#[cfg(feature = "gpu")]
 use bitcoin::key::Secp256k1;
 #[cfg(feature = "gpu")]
 use bitcoin::secp256k1::SecretKey;
 #[cfg(feature = "gpu")]
+use bitcoin::{Address, Network};
+#[cfg(feature = "gpu")]
 use hex;
+#[cfg(feature = "gpu")]
+use sha2::{Digest, Sha256};
+#[cfg(feature = "gpu")]
+use tracing::{info, warn};
 
 #[cfg(not(feature = "gpu"))]
 pub fn run() -> Result<()> {

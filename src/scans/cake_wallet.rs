@@ -87,13 +87,13 @@ fn run_gpu(solver: crate::scans::gpu_solver::GpuSolver, max_entropy: u32) -> Res
 }
 
 fn run_cpu(max_entropy: u32) -> Result<()> {
-    use bitcoin::Network;
-    use bitcoin::secp256k1::Secp256k1;
-    use bitcoin::bip32::{DerivationPath, Xpriv};
-    use bip39::Mnemonic;
-    use std::str::FromStr;
-    use bitcoin::Address;
     use crate::utils::electrum;
+    use bip39::Mnemonic;
+    use bitcoin::bip32::{DerivationPath, Xpriv};
+    use bitcoin::secp256k1::Secp256k1;
+    use bitcoin::Address;
+    use bitcoin::Network;
+    use std::str::FromStr;
 
     let secp = Secp256k1::new();
     let network = Network::Bitcoin;
@@ -105,26 +105,26 @@ fn run_cpu(max_entropy: u32) -> Result<()> {
     info!("Starting CPU scan (this may take a while)...");
 
     for i in 0..max_entropy {
-         // Create deterministic entropy from seed index
-         // Replicating Dart Random() behavior or just brute forcing the 20-bit space?
-         // The original code was iterating 0..max_entropy and using that as bytes.
-         // If "effectively 20 bits of entropy" means the seed is 20 bits padded, then this is correct.
-        let mut entropy_bytes = [0u8; 16]; 
+        // Create deterministic entropy from seed index
+        // Replicating Dart Random() behavior or just brute forcing the 20-bit space?
+        // The original code was iterating 0..max_entropy and using that as bytes.
+        // If "effectively 20 bits of entropy" means the seed is 20 bits padded, then this is correct.
+        let mut entropy_bytes = [0u8; 16];
         let seed_bytes = i.to_be_bytes();
         entropy_bytes[0..4].copy_from_slice(&seed_bytes);
-        
+
         // Mnemonic from entropy
         // Note: We assume the vulnerability resulted in BIP39 words, but derived as Electrum.
         let mnemonic = Mnemonic::from_entropy(&entropy_bytes)?;
         let mnemonic_str = mnemonic.to_string();
-        
+
         // Electrum Seed Derivation
         let seed_val = electrum::mnemonic_to_seed(&mnemonic_str);
-        
+
         let root = Xpriv::new_master(network, &seed_val)?;
         let child = root.derive_priv(&secp, &path)?;
         let pubkey = child.to_keypair(&secp).public_key();
-        
+
         // Check both P2WPKH (SegWit) and P2PKH (Legacy) addresses
         // Cake Wallet versions may have used either format
         let compressed_pubkey = bitcoin::CompressedPublicKey(pubkey);
@@ -133,12 +133,12 @@ fn run_cpu(max_entropy: u32) -> Result<()> {
 
         // In a real scan we would check if this address matches a target or has balance.
         // Since we are just generating, we log both formats.
-        
+
         info!("ADDRESS_SEGWIT: {}", address_segwit);
         info!("ADDRESS_LEGACY: {}", address_legacy);
 
         if (i + 1) % 1000 == 0 {
-             info!(
+            info!(
                 "Progress: {}/{} ({:.1}%)",
                 i + 1,
                 max_entropy,
@@ -146,7 +146,7 @@ fn run_cpu(max_entropy: u32) -> Result<()> {
             );
         }
     }
-    
+
     info!("CPU scan complete.");
     Ok(())
 }

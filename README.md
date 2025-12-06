@@ -19,6 +19,11 @@ This tool includes scanners for the following known vulnerabilities:
 2. **Trust Wallet (2023)** - Reproduces Trust Wallet MT19937 weakness
 3. **Mobile Sensor Entropy** - Tests mobile sensor-based entropy vulnerabilities
 4. **Libbitcoin "Milk Sad"** - Scans for the Milk Sad vulnerability (CVE-2023-39910)
+   - **Research Update #13 (July 2025)**: Discovered 224,000+ new vulnerable wallets
+   - Characteristics: 256-bit (24-word) mnemonics, BIP49 (P2SH-SegWit), m/49'/0'/0'/0/0 path
+   - Time period: Primarily 2018 wallet activity
+   - All requirements fully supported in this implementation
+   - **See [RESEARCH_UPDATE_13.md](RESEARCH_UPDATE_13.md) for complete details**
 5. **Malicious Browser Extension** - Simulates malicious extension entropy manipulation
 6. **Android SecureRandom** - Detects duplicate R values in ECDSA signatures
 7. **Profanity** - Scans for Profanity vanity address vulnerabilities
@@ -72,6 +77,16 @@ cargo run --release -- trust-wallet
 
 # Scan for Milk Sad vulnerability with specific time range
 cargo run --release -- milk-sad --start-timestamp 1609459200 --end-timestamp 1640995200
+
+# Scan for Research Update #13 wallets (2018, 24-word, BIP49)
+# This scans for the 224k+ wallet cluster discovered in July 2025
+cargo run --release -- milk-sad \
+  --start-timestamp 1514764800 \
+  --end-timestamp 1546300799 \
+  --multipath \
+  --rpc-url http://127.0.0.1:8332 \
+  --rpc-user your_username \
+  --rpc-pass your_password
 ```
 
 ### RPC-Based Scanning
@@ -290,6 +305,8 @@ This measures throughput for:
 ## Roadmap
 
 - [x] Complete Android SecureRandom private key recovery implementation
+- [x] **[COMPLETED]** Research Update #13 support (224k+ wallets, 24-word BIP49)
+  - See detailed documentation: [RESEARCH_UPDATE_13.md](RESEARCH_UPDATE_13.md)
 - [ ] **[HIGH PRIORITY]** Implement Randstorm/BitcoinJS scanner (2011-2015 vulnerability)
 - [ ] **[CRITICAL]** Add Electrum seed version prefix validation for Cake Wallet
 - [ ] **[HIGH]** Implement Trust Wallet iOS minstd_rand0 scanner (CVE-2024-23660)

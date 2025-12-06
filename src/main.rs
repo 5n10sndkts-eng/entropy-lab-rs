@@ -1,7 +1,7 @@
 use anyhow::Result;
-use tracing::info;
 use clap::{Parser, Subcommand};
 use entropy_lab_rs::scans;
+use tracing::info;
 
 #[derive(Parser)]
 #[command(name = "entropy-lab")]
@@ -205,23 +205,30 @@ fn main() -> Result<()> {
             rpc_pass,
         } => {
             info!("Running Libbitcoin 'Milk Sad' Vulnerability Reproduction...");
-            
+
             // Resolve RPC credentials if provided
-            let rpc_config = if let (Some(url), Some(user), Some(pass)) = (rpc_url, rpc_user, rpc_pass) {
-                 Some(get_rpc_credentials(url, user, pass)?)
-            } else {
-                // If specific flags not provided, try generic env vars? 
-                // get_rpc_credentials handles env vars if we pass empty strings, but here they are Options.
-                // Let's rely on user explicit flags strictly for now or explicit env fallback logic if I adapt get_rpc_credentials logic.
-                None 
-            };
-            
+            let rpc_config =
+                if let (Some(url), Some(user), Some(pass)) = (rpc_url, rpc_user, rpc_pass) {
+                    Some(get_rpc_credentials(url, user, pass)?)
+                } else {
+                    // If specific flags not provided, try generic env vars?
+                    // get_rpc_credentials handles env vars if we pass empty strings, but here they are Options.
+                    // Let's rely on user explicit flags strictly for now or explicit env fallback logic if I adapt get_rpc_credentials logic.
+                    None
+                };
+
             // Wait, get_rpc_credentials consumes simple strings.
             // Let's just pass Options to milk_sad.run?
             // Existing run() takes nothing. run_with_target takes target string.
             // We need to refactor milk_sad::run to be more flexible.
-            
-            scans::milk_sad::run_scan(target, start_timestamp, end_timestamp, multipath, rpc_config)?;
+
+            scans::milk_sad::run_scan(
+                target,
+                start_timestamp,
+                end_timestamp,
+                multipath,
+                rpc_config,
+            )?;
         }
         Commands::MaliciousExtension => {
             info!("Running Malicious Extension Reproduction...");
@@ -262,7 +269,12 @@ fn main() -> Result<()> {
             fp_rate,
         } => {
             info!("Building Bloom Filter...");
-            entropy_lab_rs::utils::bloom_filter::build_from_file(&input, &output, expected_items, fp_rate)?;
+            entropy_lab_rs::utils::bloom_filter::build_from_file(
+                &input,
+                &output,
+                expected_items,
+                fp_rate,
+            )?;
         }
         Commands::Bip3x => {
             scans::bip3x::run()?;

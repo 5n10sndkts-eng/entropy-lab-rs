@@ -9,14 +9,17 @@ pub fn build_from_file(
     input_path: &str,
     output_path: &str,
     expected_items: usize,
-    fp_rate: f64
+    fp_rate: f64,
 ) -> Result<()> {
-    info!("Initializing Bloom Filter (Items: {}, FP Rate: {})", expected_items, fp_rate);
-    
+    info!(
+        "Initializing Bloom Filter (Items: {}, FP Rate: {})",
+        expected_items, fp_rate
+    );
+
     // new_for_fp_rate returns Result.
     let mut bloom: Bloom<String> = Bloom::new_for_fp_rate(expected_items, fp_rate)
         .map_err(|e| anyhow::anyhow!("Error creating bloom: {:?}", e))?;
-    
+
     info!("Reading addresses from {}...", input_path);
     let file = File::open(input_path)?;
     let reader = BufReader::new(file);
