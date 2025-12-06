@@ -1,24 +1,33 @@
 /// Electrum mnemonic generation and seed derivation
 /// Based on Electrum wallet's mnemonic format (different from BIP39)
-use anyhow::{anyhow, Result};
 use bip39::Mnemonic;
-use hmac::{Hmac, Mac};
 use pbkdf2::pbkdf2_hmac;
 use sha2::Sha512;
-use std::fmt;
 
-type HmacSha512 = Hmac<Sha512>;
+// Unused imports for the disabled ElectrumMnemonic code
+// use anyhow::{anyhow, Result};
+// use hmac::{Hmac, Mac};
+// use std::fmt;
+// type HmacSha512 = Hmac<Sha512>;
 
-/// Electrum wordlist (same as BIP39 English wordlist)
-/// Note: This wordlist is the same as BIP39, but Electrum uses it differently
-/// with version checking via HMAC-SHA512. Currently only used for reference.
-const WORDLIST: &[&str] = &include!("data/electrum_wordlist.txt");
+// Electrum wordlist support is disabled - it's not needed for the current implementation
+// which only converts BIP39 mnemonics to Electrum seeds using the correct PBKDF2 salt.
+// If full Electrum mnemonic generation is needed in the future, uncomment this section.
+//
+// /// Electrum wordlist (same as BIP39 English wordlist)
+// /// Note: This wordlist is the same as BIP39, but Electrum uses it differently
+// /// with version checking via HMAC-SHA512. Currently only used for reference.
+// const WORDLIST: &[&str] = &include!("data/electrum_wordlist.txt");
+//
+// /// Version prefixes for different Electrum wallet types
+// pub const SEGWIT_PREFIX: &str = "100";
+// pub const LEGACY_PREFIX: &str = "01";
+// pub const STANDARD_PREFIX: &str = "01";
 
-/// Version prefixes for different Electrum wallet types
-pub const SEGWIT_PREFIX: &str = "100";
-pub const LEGACY_PREFIX: &str = "01";
-pub const STANDARD_PREFIX: &str = "01";
-
+// The following ElectrumMnemonic struct and related functions are currently unused
+// and disabled because they require the wordlist file. They can be re-enabled
+// if full Electrum mnemonic generation is needed in the future.
+/*
 #[derive(Debug, Clone)]
 pub struct ElectrumMnemonic {
     words: Vec<String>,
@@ -149,6 +158,7 @@ fn normalize_text(text: &str) -> String {
     // For now, just use basic trimming and lowercasing which works for ASCII mnemonics
     text.trim().to_lowercase()
 }
+*/
 
 /// Generate Electrum-style seed from BIP39 mnemonic
 /// This uses the same word phrase but derives the seed using Electrum's method
@@ -171,6 +181,8 @@ pub fn mnemonic_to_electrum_seed(mnemonic: &Mnemonic, passphrase: &str) -> [u8; 
     seed
 }
 
+// Tests for the unused ElectrumMnemonic code are also disabled
+/*
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -206,3 +218,4 @@ mod tests {
         assert_eq!(seed, seed2);
     }
 }
+*/
