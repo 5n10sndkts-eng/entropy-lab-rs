@@ -40,6 +40,7 @@ impl GpuSolver {
             "bip39_wordlist_complete",
             "bip39_full",
             "batch_address",
+            "batch_address_electrum",
             "batch_cake_wallet",
             "cake_hash",
             "mobile_sensor_hash",
@@ -223,6 +224,89 @@ impl GpuSolver {
         let kernel = self
             .pro_que
             .kernel_builder(&self.kernel_name)
+            .arg(&buffer_hi)
+            .arg(&buffer_lo)
+            .arg(&buffer_out)
+            .arg(purpose)
+            .global_work_size(batch_size)
+            .local_work_size(local_work_size)
+            .build()?;
+
+        unsafe {
+            kernel.enq()?;
+        }
+
+        let mut output = vec![0u8; output_len];
+        buffer_out.read(&mut output).enq()?;
+
+        let mut results = Vec::with_capacity(batch_size);
+        for chunk in output.chunks(25) {
+            let mut addr = [0u8; 25];
+            addr.copy_from_slice(chunk);
+            results.push(addr);
+        }
+
+        Ok(results)
+    }
+
+    /// Compute addresses using Electrum seed derivation (with "electrum" salt)
+    /// This is specifically for Cake Wallet vulnerability scanning
+    pub fn compute_batch_electrum(
+        &self,
+        entropies: &[[u8; 16]],
+        purpose: u32,
+    ) -> ocl::Result<Vec<[u8; 25]>> {
+        let batch_size = entropies.len();
+        if batch_size == 0 {
+            return Ok(Vec::new());
+        }
+
+        // Split 128-bit entropy into two 64-bit ulongs for OpenCL
+        let mut entropies_hi = Vec::with_capacity(batch_size);
+        let mut entropies_lo = Vec::with_capacity(batch_size);
+
+        for ent in entropies {
+            let hi = u64::from_be_bytes(
+                ent[0..8]
+                    .try_into()
+                    .expect("Entropy should always be 16 bytes"),
+            );
+            let lo = u64::from_be_bytes(
+                ent[8..16]
+                    .try_into()
+                    .expect("Entropy should always be 16 bytes"),
+            );
+            entropies_hi.push(hi);
+            entropies_lo.push(lo);
+        }
+
+        let buffer_hi = Buffer::builder()
+            .queue(self.pro_que.queue().clone())
+            .flags(MemFlags::new().read_only().alloc_host_ptr().copy_host_ptr())
+            .len(batch_size)
+            .copy_host_slice(&entropies_hi)
+            .build()?;
+
+        let buffer_lo = Buffer::builder()
+            .queue(self.pro_que.queue().clone())
+            .flags(MemFlags::new().read_only().alloc_host_ptr().copy_host_ptr())
+            .len(batch_size)
+            .copy_host_slice(&entropies_lo)
+            .build()?;
+
+        let output_len = batch_size * 25;
+        let buffer_out = Buffer::<u8>::builder()
+            .queue(self.pro_que.queue().clone())
+            .flags(MemFlags::new().write_only().alloc_host_ptr())
+            .len(output_len)
+            .build()?;
+
+        let local_work_size = self.calculate_local_work_size(batch_size);
+
+        // Use the Electrum kernel
+        let kernel = self
+            .pro_que
+            .kernel_builder("batch_address_electrum")
             .arg(&buffer_hi)
             .arg(&buffer_lo)
             .arg(&buffer_out)
