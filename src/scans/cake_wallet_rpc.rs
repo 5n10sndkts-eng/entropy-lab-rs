@@ -71,11 +71,11 @@ pub fn run(rpc_url: &str, rpc_user: &str, rpc_pass: &str) -> Result<()> {
         }
 
         // Generate addresses on GPU for all 3 derivation paths
-        // Purpose parameter corresponds to BIP44 purpose in derivation path m/purpose'/0'/0'/0/0
-        // 44 = m/44'/0'/0'/0/0 (BIP44 Legacy), 84 = m/84'/0'/0'/0/0 (BIP84 SegWit), 0 = m/0'/0/0 (Cake Wallet)
-        let addresses_44 = solver.compute_batch(&entropies, 44)?;
-        let addresses_84 = solver.compute_batch(&entropies, 84)?;
-        let addresses_0 = solver.compute_batch(&entropies, 0)?;
+        // Purpose parameter corresponds to derivation path
+        // 44 = m/44'/0'/0'/0/0 (BIP44 Legacy), 84 = m/84'/0'/0'/0/0 (BIP84 SegWit), 0 = m/0'/0/0 (Cake Wallet Electrum)
+        let addresses_44 = solver.compute_batch(&entropies, 44)?; // BIP39 seed
+        let addresses_84 = solver.compute_batch(&entropies, 84)?; // BIP39 seed
+        let addresses_0 = solver.compute_batch_electrum(&entropies, 0)?; // Electrum seed
 
         // Check each address via RPC
         for idx in 0..current_batch_size {
