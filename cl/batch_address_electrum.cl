@@ -86,6 +86,7 @@ __kernel void batch_address_electrum(
 
   uchar seed[64] __attribute__((aligned(4))) = { 0 };
   uchar sha512_result[64] __attribute__((aligned(4))) = { 0 };
+  uchar key_previous_concat[256] __attribute__((aligned(4))) = { 0 };
   uchar salt[12] = { 101, 108, 101, 99, 116, 114, 117, 109, 0, 0, 0, 1 }; // ASCII: 'e'=101, 'l'=108, 'e'=101, 'c'=99, 't'=116, 'r'=114, 'u'=117, 'm'=109 -> "electrum"
   for(int x=0;x<128;x++){
     key_previous_concat[x] = ipad_key[x];
