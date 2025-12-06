@@ -42,37 +42,37 @@ impl ElectrumMnemonic {
             let mut entropy_with_nonce = entropy.to_vec();
             // Append nonce bytes
             entropy_with_nonce.extend_from_slice(&nonce.to_le_bytes());
-            
+
             let words = encode_entropy(&entropy_with_nonce)?;
             let mnemonic_str = words.join(" ");
-            
+
             if check_version_prefix(&mnemonic_str, prefix)? {
                 return Ok(ElectrumMnemonic { words });
             }
         }
-        
+
         Err(anyhow!("Failed to generate valid Electrum mnemonic with prefix {}", prefix))
     }
-    
+
     /// Create from a mnemonic string
     pub fn from_string(mnemonic: &str) -> Result<Self> {
         let words: Vec<String> = mnemonic.split_whitespace().map(|s| s.to_string()).collect();
-        
+
         // Validate words are in the wordlist
         for word in &words {
             if !WORDLIST.contains(&word.as_str()) {
                 return Err(anyhow!("Invalid word in mnemonic: {}", word));
             }
         }
-        
+
         Ok(ElectrumMnemonic { words })
     }
-    
+
     /// Check if this mnemonic matches a specific version prefix
     pub fn check_prefix(&self, prefix: &str) -> Result<bool> {
         check_version_prefix(&self.to_string(), prefix)
     }
-    
+
     /// Convert mnemonic to seed bytes using PBKDF2-HMAC-SHA512
     /// Salt is "electrum" + optional passphrase
     pub fn to_seed(&self, passphrase: &str) -> [u8; 64] {
@@ -82,7 +82,7 @@ impl ElectrumMnemonic {
         } else {
             format!("electrum{}", passphrase)
         };
-        
+
         let mut seed = [0u8; 64];
         pbkdf2_hmac::<Sha512>(
             mnemonic_str.as_bytes(),
@@ -105,36 +105,36 @@ fn encode_entropy(entropy: &[u8]) -> Result<Vec<String>> {
     if entropy.is_empty() {
         return Err(anyhow!("Entropy cannot be empty"));
     }
-    
+
     // Convert entropy to binary string
     let mut bin = String::new();
     for byte in entropy {
         bin.push_str(&format!("{:08b}", byte));
     }
-    
+
     // Split into 11-bit chunks (log2(2048) = 11)
     let mut words = Vec::new();
     let word_bit_len = 11;
     let word_count = bin.len() / word_bit_len;
-    
+
     for i in 0..word_count {
         let start = i * word_bit_len;
         let end = (i + 1) * word_bit_len;
         if end > bin.len() {
             break;
         }
-        
+
         let word_bits = &bin[start..end];
         let word_index = usize::from_str_radix(word_bits, 2)
             .map_err(|e| anyhow!("Failed to parse word bits: {}", e))?;
-        
+
         if word_index >= WORDLIST.len() {
             return Err(anyhow!("Word index {} out of range", word_index));
         }
-        
+
         words.push(WORDLIST[word_index].to_string());
     }
-    
+
     Ok(words)
 }
 
@@ -142,13 +142,13 @@ fn encode_entropy(entropy: &[u8]) -> Result<Vec<String>> {
 /// Uses HMAC-SHA512 with key "Seed version"
 fn check_version_prefix(mnemonic: &str, expected_prefix: &str) -> Result<bool> {
     let normalized = normalize_text(mnemonic);
-    
+
     let mut mac = HmacSha512::new_from_slice(b"Seed version")
         .map_err(|e| anyhow!("Failed to create HMAC: {}", e))?;
     mac.update(normalized.as_bytes());
     let result = mac.finalize();
     let hash_hex = hex::encode(result.into_bytes());
-    
+
     Ok(hash_hex.starts_with(&expected_prefix.to_lowercase()))
 }
 
@@ -170,14 +170,9 @@ pub fn mnemonic_to_electrum_seed(mnemonic: &Mnemonic, passphrase: &str) -> [u8; 
     } else {
         format!("electrum{}", passphrase)
     };
-    
+
     let mut seed = [0u8; 64];
-    pbkdf2_hmac::<Sha512>(
-        mnemonic_str.as_bytes(),
-        salt.as_bytes(),
-        2048,
-        &mut seed,
-    );
+    pbkdf2_hmac::<Sha512>(mnemonic_str.as_bytes(), salt.as_bytes(), 2048, &mut seed);
     seed
 }
 
@@ -186,13 +181,13 @@ pub fn mnemonic_to_electrum_seed(mnemonic: &Mnemonic, passphrase: &str) -> [u8; 
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
     fn test_electrum_mnemonic_generation() {
         // Test with known entropy
         let entropy = [0u8; 16];
         let result = ElectrumMnemonic::from_entropy(&entropy, SEGWIT_PREFIX);
-        
+
         // Should eventually find a valid mnemonic
         match result {
             Ok(mnemonic) => {
@@ -204,13 +199,13 @@ mod tests {
             }
         }
     }
-    
+
     #[test]
     fn test_electrum_seed_derivation() {
         // Test seed derivation
         let mnemonic = ElectrumMnemonic::from_string("abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about").unwrap();
         let seed = mnemonic.to_seed("");
-        
+
         // Seed should be 64 bytes
         assert_eq!(seed.len(), 64);
         // Should be deterministic

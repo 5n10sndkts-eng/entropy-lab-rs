@@ -94,14 +94,14 @@ mod tests {
         entropy[0..4].copy_from_slice(&(i as u32).to_be_bytes());
 
         let mnemonic = Mnemonic::from_entropy(&entropy[0..16]).unwrap();
-        
+
         // Use Electrum seed derivation
         let seed = crate::electrum_mnemonic::mnemonic_to_electrum_seed(&mnemonic, "");
-        
+
         let network = Network::Bitcoin;
         let secp = Secp256k1::new();
         let root = Xpriv::new_master(network, &seed).unwrap();
-        
+
         // Electrum path for Cake Wallet: m/0'/0/0
         let path = DerivationPath::from_str("m/0'/0/0").unwrap();
         let child = root.derive_priv(&secp, &path).unwrap();

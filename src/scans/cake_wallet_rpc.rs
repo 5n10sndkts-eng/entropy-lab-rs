@@ -42,7 +42,7 @@ pub fn run(rpc_url: &str, rpc_user: &str, rpc_pass: &str) -> Result<()> {
     let network = Network::Bitcoin;
 
     // 20 bits = 1,048,576 possibilities
-    let max_entropy = 1 << 20;
+    let max_entropy: usize = 1 << 20;
 
     println!(
         "Scanning {} possible seeds with GPU acceleration...",
@@ -55,7 +55,7 @@ pub fn run(rpc_url: &str, rpc_user: &str, rpc_pass: &str) -> Result<()> {
 
     // Process in batches for GPU efficiency
     let batch_size = 10000;
-    let total_batches = (max_entropy + batch_size - 1) / batch_size;
+    let total_batches = max_entropy.div_ceil(batch_size);
 
     for batch_idx in 0..total_batches {
         let batch_start = batch_idx * batch_size;
@@ -174,14 +174,12 @@ fn decode_address_from_gpu(
             // P2WPKH SegWit: first 20 bytes are the witness program
             // GPU outputs raw 20-byte hash160, remaining bytes are zeros
             let witness_program = &addr_bytes[0..20];
-            
+
             // Create P2WPKH address from witness program
             use bitcoin::WitnessVersion;
-            let wp = bitcoin::WitnessProgram::new(
-                WitnessVersion::V0,
-                witness_program,
-            ).map_err(|e| anyhow::anyhow!("Invalid witness program: {}", e))?;
-            
+            let wp = bitcoin::WitnessProgram::new(WitnessVersion::V0, witness_program)
+                .map_err(|e| anyhow::anyhow!("Invalid witness program: {}", e))?;
+
             let address = Address::from_witness_program(wp, network);
             Ok(address.to_string())
         }
@@ -190,14 +188,14 @@ fn decode_address_from_gpu(
             let addr_str = std::str::from_utf8(addr_bytes)
                 .unwrap_or("")
                 .trim_end_matches('\0');
-            
+
             if addr_str.is_empty() {
                 return Err(anyhow::anyhow!("GPU returned empty address"));
             }
-            
+
             Ok(addr_str.to_string())
         }
-        _ => Err(anyhow::anyhow!("Unknown address type: {}", addr_type))
+        _ => Err(anyhow::anyhow!("Unknown address type: {}", addr_type)),
     }
 }
 
