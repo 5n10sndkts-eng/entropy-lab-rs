@@ -59,7 +59,7 @@ pub fn ltc_p2shwpkh_address(pubkey: &bitcoin::CompressedPublicKey) -> String {
     // Hash the redeem script: SHA256 then RIPEMD160
     let sha256_hash = Sha256::digest(&redeem_script);
     let mut ripemd = Ripemd160::new();
-    ripemd.update(&sha256_hash);
+    ripemd.update(sha256_hash);
     let hash160_result = ripemd.finalize();
     
     // Convert to [u8; 20]

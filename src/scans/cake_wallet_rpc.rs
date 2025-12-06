@@ -35,7 +35,7 @@ pub fn run(rpc_url: &str, rpc_user: &str, rpc_pass: &str) -> Result<()> {
     #[cfg(not(feature = "gpu"))]
     {
         println!("GPU feature not enabled. Running CPU-only mode...");
-        return run_cpu_only(rpc_url, rpc_user, rpc_pass);
+        run_cpu_only(rpc_url, rpc_user, rpc_pass)
     }
 
     #[cfg(feature = "gpu")]

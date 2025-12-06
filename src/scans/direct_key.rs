@@ -60,13 +60,13 @@ pub fn run(
             
             // Generate both compressed and uncompressed addresses
             let compressed = CompressedPublicKey(pubkey_secp);
-            let addr_compressed = Address::p2pkh(&compressed, network);
+            let addr_compressed = Address::p2pkh(compressed, network);
             
             // Check match
             if addr_compressed.to_string() == target {
                 warn!("\n🎯 FOUND MATCH!");
                 warn!("Seed: {}", seed);
-                warn!("Private Key: {}", hex::encode(&privkey_bytes));
+                warn!("Private Key: {}", hex::encode(privkey_bytes));
                 warn!("Address: {}", addr_compressed);
                 warn!("PRNG: {:?}, Pattern: {:?}", prng, pattern);
                 return Ok(());
@@ -77,14 +77,14 @@ pub fn run(
             if addr_wpkh.to_string() == target {
                 warn!("\n🎯 FOUND MATCH (SegWit)!");
                 warn!("Seed: {}", seed);
-                warn!("Private Key: {}", hex::encode(&privkey_bytes));
+                warn!("Private Key: {}", hex::encode(privkey_bytes));
                 warn!("Address: {}", addr_wpkh);
                 return Ok(());
             }
         }
         
         checked += 1;
-        if checked % 500_000 == 0 {
+        if checked.is_multiple_of(500_000) {
             let elapsed = start_time.elapsed().as_secs_f64();
             let speed = checked as f64 / elapsed;
             info!("Scanned {} seeds | {:.0} seeds/s", checked, speed);
@@ -111,9 +111,9 @@ fn generate_mt19937_msb(seed: u32, pattern: BytePattern) -> [u8; 32] {
     let mut key = [0u8; 32];
     
     // For MSB-only extraction, we need 32 outputs (1 byte each)
-    for i in 0..32 {
+    for byte in &mut key {
         let val = rng.next_u32();
-        key[i] = ((val >> 24) & 0xFF) as u8;  // MSB only
+        *byte = ((val >> 24) & 0xFF) as u8;  // MSB only
     }
     
     match pattern {
@@ -121,8 +121,8 @@ fn generate_mt19937_msb(seed: u32, pattern: BytePattern) -> [u8; 32] {
         BytePattern::PatternB => {
             // Pattern B: reverse byte order
             let mut reversed = [0u8; 32];
-            for i in 0..32 {
-                reversed[i] = key[31 - i];
+            for (i, &b) in key.iter().enumerate() {
+                reversed[31 - i] = b;
             }
             reversed
         }
@@ -135,9 +135,9 @@ fn generate_mt19937_lsb(seed: u32, pattern: BytePattern) -> [u8; 32] {
     let mut key = [0u8; 32];
     
     // For LSB-only extraction, we need 32 outputs (1 byte each)
-    for i in 0..32 {
+    for byte in &mut key {
         let val = rng.next_u32();
-        key[i] = (val & 0xFF) as u8;  // LSB only
+        *byte = (val & 0xFF) as u8;  // LSB only
     }
     
     match pattern {

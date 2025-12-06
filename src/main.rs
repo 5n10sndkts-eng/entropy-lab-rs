@@ -1,6 +1,5 @@
 use anyhow::Result;
 use tracing::info;
-use tracing_subscriber;
 use clap::{Parser, Subcommand};
 use entropy_lab_rs::scans;
 

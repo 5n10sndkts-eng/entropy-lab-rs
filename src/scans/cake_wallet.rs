@@ -110,7 +110,7 @@ fn run_cpu(max_entropy: u32) -> Result<()> {
          // The original code was iterating 0..max_entropy and using that as bytes.
          // If "effectively 20 bits of entropy" means the seed is 20 bits padded, then this is correct.
         let mut entropy_bytes = [0u8; 16]; 
-        let seed_bytes = (i as u32).to_be_bytes();
+        let seed_bytes = i.to_be_bytes();
         entropy_bytes[0..4].copy_from_slice(&seed_bytes);
         
         // Mnemonic from entropy

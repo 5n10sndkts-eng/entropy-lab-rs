@@ -100,7 +100,7 @@ pub fn recover_with_passphrase_file(
         }
         
         checked += 1;
-        if checked % 10000 == 0 {
+        if checked.is_multiple_of(10000) {
             let elapsed = start_time.elapsed().as_secs_f64();
             let speed = checked as f64 / elapsed;
             info!("Tried {} passphrases | {:.0}/s", checked, speed);
@@ -139,7 +139,7 @@ fn try_passphrase(
                     let compressed = CompressedPublicKey(pubkey);
                     
                     // Check P2PKH (1...)
-                    let addr_p2pkh = Address::p2pkh(&compressed, network);
+                    let addr_p2pkh = Address::p2pkh(compressed, network);
                     if addr_p2pkh.to_string() == target_address {
                         return Ok(true);
                     }
@@ -188,7 +188,7 @@ pub fn show_addresses(mnemonic_str: &str, passphrase: &str) -> Result<()> {
                     let compressed = CompressedPublicKey(pubkey);
                     
                     info!("\n{} ({}):", name, path_str);
-                    info!("  P2PKH:       {}", Address::p2pkh(&compressed, network));
+                    info!("  P2PKH:       {}", Address::p2pkh(compressed, network));
                     info!("  P2WPKH:      {}", Address::p2wpkh(&compressed, network));
                     info!("  P2SH-P2WPKH: {}", Address::p2shwpkh(&compressed, network));
                 }

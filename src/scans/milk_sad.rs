@@ -318,7 +318,7 @@ fn run_rpc_scan(start_ts: u32, end_ts: u32, multipath: bool, rpc: Client) -> Res
             }
         }
         
-        if (t - start_ts) % 1000 == 0 && t > start_ts {
+        if (t - start_ts).is_multiple_of(1000) && t > start_ts {
             let elapsed = start_time.elapsed().as_secs_f64();
             let speed = checked as f64 / elapsed;
             info!("Progress: {} ts | {} addrs checked | {:.0} addr/s | {} found", 
@@ -348,10 +348,10 @@ pub fn generate_entropy_msb(timestamp: u32, size: EntropySize) -> Vec<u8> {
     let mut entropy = vec![0u8; byte_len];
     
     // Each entropy byte comes from the MSB of a separate MT19937 output
-    for i in 0..byte_len {
+    for byte in entropy.iter_mut().take(byte_len) {
         let val = rng.next_u32();
         // MSB extraction: take ONLY bits 31:24 (most significant byte)
-        entropy[i] = ((val >> 24) & 0xFF) as u8;
+        *byte = ((val >> 24) & 0xFF) as u8;
     }
     
     entropy

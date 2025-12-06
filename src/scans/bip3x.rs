@@ -75,7 +75,7 @@ pub fn run() -> Result<()> {
         if let Ok(sk) = SecretKey::from_slice(&priv_bytes) {
              let secp_pub = bitcoin::secp256k1::PublicKey::from_secret_key(&secp, &sk);
              let pubkey = bitcoin::PublicKey::new(secp_pub);
-             let _address = Address::p2pkh(&pubkey, network);
+             let _address = Address::p2pkh(pubkey, network);
              // Check against Bloom filter or list if available
              // For now, just print every 1M?
         }
