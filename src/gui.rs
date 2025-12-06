@@ -101,7 +101,7 @@ impl Default for EntropyLabApp {
     fn default() -> Self {
         // Check GPU availability
         let gpu_available = check_gpu_availability();
-        
+
         Self {
             config: ScanConfig {
                 rpc_url: "http://127.0.0.1:8332".to_string(),
@@ -300,7 +300,10 @@ impl eframe::App for EntropyLabApp {
                         });
                         ui.horizontal(|ui| {
                             ui.label("RPC Password:");
-                            ui.add(egui::TextEdit::singleline(&mut self.config.rpc_pass).password(true));
+                            ui.add(
+                                egui::TextEdit::singleline(&mut self.config.rpc_pass)
+                                    .password(true),
+                            );
                         });
                     }
                 }
@@ -387,10 +390,7 @@ impl eframe::App for EntropyLabApp {
             ui.separator();
             ui.add_space(5.0);
             ui.horizontal(|ui| {
-                ui.colored_label(
-                    egui::Color32::from_rgb(255, 165, 0),
-                    "⚠ Warning:",
-                );
+                ui.colored_label(egui::Color32::from_rgb(255, 165, 0), "⚠ Warning:");
                 ui.label("This tool is for authorized security research only.");
             });
         });
@@ -437,7 +437,7 @@ impl EntropyLabApp {
         // such as Arc<AtomicBool> or channels for cooperative cancellation.
         // For now, we update the UI state. The scan thread will complete its current operation.
         *self.status.lock().unwrap() = ScanStatus::Idle;
-        
+
         // Future enhancement: Add proper cancellation mechanism
         // This would require passing a cancellation token to run_scan()
     }
@@ -474,23 +474,19 @@ fn run_scan(config: &ScanConfig, status: Arc<Mutex<ScanStatus>>) -> Result<Strin
             "Cake Wallet Targeted scan completed successfully.".to_string()
         }
         ScannerType::TrustWallet => {
-            scans::trust_wallet::run(
-                if config.target.is_empty() {
-                    None
-                } else {
-                    Some(config.target.clone())
-                },
-            )?;
+            scans::trust_wallet::run(if config.target.is_empty() {
+                None
+            } else {
+                Some(config.target.clone())
+            })?;
             "Trust Wallet scan completed successfully.".to_string()
         }
         ScannerType::MobileSensor => {
-            scans::mobile_sensor::run(
-                if config.target.is_empty() {
-                    None
-                } else {
-                    Some(config.target.clone())
-                },
-            )?;
+            scans::mobile_sensor::run(if config.target.is_empty() {
+                None
+            } else {
+                Some(config.target.clone())
+            })?;
             "Mobile Sensor scan completed successfully.".to_string()
         }
         ScannerType::MilkSad => {
@@ -518,13 +514,11 @@ fn run_scan(config: &ScanConfig, status: Arc<Mutex<ScanStatus>>) -> Result<Strin
             "Milk Sad scan completed successfully.".to_string()
         }
         ScannerType::Profanity => {
-            scans::profanity::run(
-                if config.target.is_empty() {
-                    None
-                } else {
-                    Some(config.target.clone())
-                },
-            )?;
+            scans::profanity::run(if config.target.is_empty() {
+                None
+            } else {
+                Some(config.target.clone())
+            })?;
             "Profanity scan completed successfully.".to_string()
         }
         ScannerType::AndroidSecureRandom => {
