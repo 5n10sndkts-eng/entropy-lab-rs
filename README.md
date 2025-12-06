@@ -12,7 +12,10 @@ This tool includes scanners for the following known vulnerabilities:
 
 ### Implemented Scanners
 
-1. **Cake Wallet (2024)** - Scans for the Cake Wallet entropy vulnerability
+1. **Cake Wallet (2024)** - Scans for the Cake Wallet entropy vulnerability using Electrum seed format
+   - Uses Electrum seed derivation (PBKDF2 with "electrum" salt)
+   - Derivation path: m/0'/0/0 (Electrum format)
+   - Scans 2^20 (1,048,576) entropy space from weak PRNG
 2. **Trust Wallet (2023)** - Reproduces Trust Wallet MT19937 weakness
 3. **Mobile Sensor Entropy** - Tests mobile sensor-based entropy vulnerabilities
 4. **Libbitcoin "Milk Sad"** - Scans for the Milk Sad vulnerability (CVE-2023-39910)
@@ -20,6 +23,9 @@ This tool includes scanners for the following known vulnerabilities:
 6. **Android SecureRandom** - Detects duplicate R values in ECDSA signatures
 7. **Profanity** - Scans for Profanity vanity address vulnerabilities
 8. **Cake Wallet Dart PRNG** - Time-based Dart PRNG vulnerability scanner
+   - Scans 2020-2021 timestamps to find 8,757 vulnerable seeds
+   - Uses Electrum seed format
+   - Documented at milksad.info
 
 ### Features
 
@@ -131,6 +137,22 @@ The following environment variables are supported:
 - Environment variables
 - Configuration files (added to .gitignore)
 - Secret management systems
+
+### Cake Wallet - Electrum vs BIP39
+
+Cake Wallet uses **Electrum seed format** for Bitcoin wallets, not BIP39. The key differences are:
+
+1. **Seed Derivation**: 
+   - BIP39: PBKDF2-HMAC-SHA512 with salt "mnemonic" + passphrase
+   - Electrum: PBKDF2-HMAC-SHA512 with salt "electrum" + passphrase
+
+2. **Derivation Path**:
+   - BIP44 standard: m/44'/0'/0'/0/0
+   - Electrum for Cake Wallet: m/0'/0/0
+
+3. **Impact**: Using the wrong seed format produces completely different addresses, which explains why scans might find zero vulnerable wallets if using BIP39 instead of Electrum.
+
+This tool correctly implements Electrum seed derivation for Cake Wallet scanners using the `compute_batch_electrum()` method and the `batch_address_electrum.cl` GPU kernel.
 
 ## Development
 
