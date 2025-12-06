@@ -13,4 +13,5 @@ pub mod milk_sad;
 pub mod mobile_sensor;
 pub mod profanity;
 pub mod trust_wallet;
+pub mod trust_wallet_lcg;
 pub mod verify_csv;

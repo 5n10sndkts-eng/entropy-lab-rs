@@ -48,6 +48,12 @@ enum Commands {
         end_timestamp: Option<u32>,
         #[arg(long, default_value = "false")]
         multipath: bool,
+        #[arg(long)]
+        rpc_url: Option<String>,
+        #[arg(long)]
+        rpc_user: Option<String>,
+        #[arg(long)]
+        rpc_pass: Option<String>,
     },
     /// Reproduce Malicious Browser Extension Logic
     MaliciousExtension,
@@ -104,6 +110,15 @@ enum Commands {
     Bip3x,
     /// Scan for EC-New (Direct PRNG) vulnerability
     EcNew {
+        #[arg(long)]
+        target: String,
+        #[arg(long)]
+        start: Option<u32>,
+        #[arg(long)]
+        end: Option<u32>,
+    },
+    /// Scan for Trust Wallet iOS LCG (minstd_rand0) vulnerability
+    TrustWalletLcg {
         #[arg(long)]
         target: String,
         #[arg(long)]
@@ -186,13 +201,28 @@ fn main() -> Result<()> {
             start_timestamp,
             end_timestamp,
             multipath,
+            rpc_url,
+            rpc_user,
+            rpc_pass,
         } => {
             info!("Running Libbitcoin 'Milk Sad' Vulnerability Reproduction...");
-            if let Some(t) = target {
-                scans::milk_sad::run_with_target(t, start_timestamp, end_timestamp, multipath)?;
+            
+            // Resolve RPC credentials if provided
+            let rpc_config = if let (Some(url), Some(user), Some(pass)) = (rpc_url, rpc_user, rpc_pass) {
+                 Some(get_rpc_credentials(url, user, pass)?)
             } else {
-                scans::milk_sad::run()?;
-            }
+                // If specific flags not provided, try generic env vars? 
+                // get_rpc_credentials handles env vars if we pass empty strings, but here they are Options.
+                // Let's rely on user explicit flags strictly for now or explicit env fallback logic if I adapt get_rpc_credentials logic.
+                None 
+            };
+            
+            // Wait, get_rpc_credentials consumes simple strings.
+            // Let's just pass Options to milk_sad.run?
+            // Existing run() takes nothing. run_with_target takes target string.
+            // We need to refactor milk_sad::run to be more flexible.
+            
+            scans::milk_sad::run_scan(target, start_timestamp, end_timestamp, multipath, rpc_config)?;
         }
         Commands::MaliciousExtension => {
             info!("Running Malicious Extension Reproduction...");
@@ -240,6 +270,11 @@ fn main() -> Result<()> {
         }
         Commands::EcNew { target, start, end } => {
             scans::ec_new::run(&target, start, end)?;
+        }
+        Commands::TrustWalletLcg { target, start, end } => {
+            let start_ts = start.unwrap_or(1293840000); // 2011
+            let end_ts = end.unwrap_or(1735689600); // 2025
+            scans::trust_wallet_lcg::run(&target, start_ts, end_ts)?;
         }
     }
 

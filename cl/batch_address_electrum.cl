@@ -215,7 +215,7 @@ __kernel void batch_address_electrum(
       uchar serialized_pubkey[33] __attribute__((aligned(4)));
       
       public_key_t pub_key;
-      secp256k1_ec_pubkey_create(&pub_key, (const __generic unsigned char*)&target_key.private_key);
+      secp256k1_ec_pubkey_create(&pub_key, (const __private unsigned char*)&target_key.private_key);
       serialized_public_key(&pub_key, serialized_pubkey);
       
       sha256((__private const uint*)serialized_pubkey, 33, (__private uint*)sha256_result);
@@ -272,7 +272,7 @@ __kernel void batch_address_electrum(
       uchar serialized_pubkey[33] __attribute__((aligned(4)));
       
       public_key_t pub_key;
-      secp256k1_ec_pubkey_create(&pub_key, (const __generic unsigned char*)&target_key.private_key);
+      secp256k1_ec_pubkey_create(&pub_key, (const __private unsigned char*)&target_key.private_key);
       serialized_public_key(&pub_key, serialized_pubkey);
       
       sha256((__private const uint*)serialized_pubkey, 33, (__private uint*)sha256_result);
