@@ -1,9 +1,12 @@
 // GPU Performance Benchmarking Utility
 // This file demonstrates how to benchmark the optimized GPU kernels
 
+#[cfg(feature = "gpu")]
 use entropy_lab_rs::scans::gpu_solver::GpuSolver;
+#[cfg(feature = "gpu")]
 use std::time::Instant;
 
+#[cfg(feature = "gpu")]
 fn benchmark_batch_address() {
     println!("=== Batch Address Generation Benchmark ===\n");
     
@@ -47,6 +50,7 @@ fn benchmark_batch_address() {
     }
 }
 
+#[cfg(feature = "gpu")]
 fn benchmark_cake_hash() {
     println!("=== Cake Hash Search Benchmark ===\n");
     
@@ -89,6 +93,7 @@ fn benchmark_cake_hash() {
     }
 }
 
+#[cfg(feature = "gpu")]
 fn benchmark_mobile_sensor() {
     println!("=== Mobile Sensor Hash Benchmark ===\n");
     
@@ -125,6 +130,7 @@ fn benchmark_mobile_sensor() {
     }
 }
 
+#[cfg(feature = "gpu")]
 fn benchmark_profanity() {
     println!("=== Profanity Address Search Benchmark ===\n");
     
@@ -155,6 +161,14 @@ fn benchmark_profanity() {
 }
 
 fn main() {
+    #[cfg(feature = "gpu")]
+    main_gpu();
+    #[cfg(not(feature = "gpu"))]
+    println!("This benchmark requires the 'gpu' feature. Run with --features gpu");
+}
+
+#[cfg(feature = "gpu")]
+fn main_gpu() {
     println!("\n╔═══════════════════════════════════════════════════╗");
     println!("║   Entropy Lab RS - GPU Performance Benchmark     ║");
     println!("╚═══════════════════════════════════════════════════╝\n");

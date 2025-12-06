@@ -86,7 +86,23 @@ __kernel void batch_address(
   uchar seed[64] __attribute__((aligned(4))) = { 0 };
   uchar sha512_result[64] __attribute__((aligned(4))) = { 0 };
   uchar key_previous_concat[256] __attribute__((aligned(4))) = { 0 };
+  
+  // Default salt: "mnemonic" (BIP39) + block count 1
   uchar salt[12] = { 109, 110, 101, 109, 111, 110, 105, 99, 0, 0, 0, 1 };
+  
+  // For Cake Wallet (purpose=0), use "electrum" salt
+  if (purpose == 0) {
+      // "electrum"
+      salt[0] = 101; // e
+      salt[1] = 108; // l
+      salt[2] = 101; // e
+      salt[3] = 99;  // c
+      salt[4] = 116; // t
+      salt[5] = 114; // r
+      salt[6] = 117; // u
+      salt[7] = 109; // m
+  }
+
   for(int x=0;x<128;x++){
     key_previous_concat[x] = ipad_key[x];
   }
@@ -225,7 +241,7 @@ __kernel void batch_address(
       uchar serialized_pubkey[33] __attribute__((aligned(4)));
       
       public_key_t pub_key;
-      secp256k1_ec_pubkey_create(&pub_key, (const __generic unsigned char*)&target_key.private_key);
+      secp256k1_ec_pubkey_create(&pub_key, (const __private unsigned char*)&target_key.private_key);
       serialized_public_key(&pub_key, serialized_pubkey);
       
       sha256((__private const uint*)serialized_pubkey, 33, (__private uint*)sha256_result);
@@ -282,7 +298,7 @@ __kernel void batch_address(
       uchar serialized_pubkey[33] __attribute__((aligned(4)));
       
       public_key_t pub_key;
-      secp256k1_ec_pubkey_create(&pub_key, (const __generic unsigned char*)&target_key.private_key);
+      secp256k1_ec_pubkey_create(&pub_key, (const __private unsigned char*)&target_key.private_key);
       serialized_public_key(&pub_key, serialized_pubkey);
       
       sha256((__private const uint*)serialized_pubkey, 33, (__private uint*)sha256_result);

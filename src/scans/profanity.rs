@@ -1,14 +1,24 @@
+#[cfg(feature = "gpu")]
 use crate::scans::gpu_solver::GpuSolver;
-use anyhow::{Context, Result};
-use hex;
+use anyhow::Result;
+#[cfg(feature = "gpu")]
+use anyhow::Context;
+#[cfg(feature = "gpu")]
+use tracing::{info, warn};
+
+#[cfg(not(feature = "gpu"))]
+pub fn run(_target: Option<String>) -> Result<()> {
+    anyhow::bail!("This scanner requires GPU acceleration. Please recompile with --features gpu");
+}
 
 /// Profanity Vanity Address Vulnerability Scanner
 /// Brute-forces 32-bit seeds used by Profanity's mt19937_64 RNG
+#[cfg(feature = "gpu")]
 pub fn run(target: Option<String>) -> Result<()> {
-    println!("Profanity Vanity Address Vulnerability Scanner (GPU)");
+    info!("Profanity Vanity Address Vulnerability Scanner (GPU)");
 
     let target_addr_str = target.context("Target address required for Profanity scan")?;
-    println!("Target Address: {}", target_addr_str);
+    info!("Target Address: {}", target_addr_str);
 
     // Parse Ethereum address (remove 0x prefix if present)
     let clean_addr = target_addr_str.trim_start_matches("0x");
@@ -18,15 +28,15 @@ pub fn run(target: Option<String>) -> Result<()> {
         anyhow::bail!("Invalid Ethereum address length: {}", target_bytes.len());
     }
 
-    println!("Initializing GPU Solver...");
+    info!("Initializing GPU Solver...");
     let solver = GpuSolver::new()?;
-    println!("[GPU] Solver initialized.");
+    info!("[GPU] Solver initialized.");
 
     // Search space: 0 to 2^32
     let total_seeds = 4_294_967_296u64;
     let _batch_size = 10_000_000; // 10M per batch
 
-    println!("Scanning {} seeds...", total_seeds);
+    info!("Scanning {} seeds...", total_seeds);
 
     let start_time = std::time::Instant::now();
 
@@ -38,16 +48,16 @@ pub fn run(target: Option<String>) -> Result<()> {
     let seeds = solver.compute_profanity(total_seeds, &target_bytes)?;
 
     if !seeds.is_empty() {
-        println!("\n[GPU] 🔓 CRACKED SUCCESSFUL!");
+        warn!("\n[GPU] 🔓 CRACKED SUCCESSFUL!");
         for seed in seeds {
-            println!("Found Seed: {}", seed);
-            println!("Private Key can be derived from this seed using MT19937-64.");
+            warn!("Found Seed: {}", seed);
+            warn!("Private Key can be derived from this seed using MT19937-64.");
         }
     } else {
-        println!("\nScan complete. No match found.");
+        info!("\nScan complete. No match found.");
     }
 
-    println!("Time elapsed: {:.2}s", start_time.elapsed().as_secs_f64());
+    info!("Time elapsed: {:.2}s", start_time.elapsed().as_secs_f64());
 
     Ok(())
 }

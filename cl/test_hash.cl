@@ -13,7 +13,7 @@ __kernel void test_hash_calc(__global ulong* output) {
     
     // ECC
     public_key_t pubkey;
-    int result = secp256k1_ec_pubkey_create(&pubkey, (const __generic unsigned char*)privkey);
+    int result = secp256k1_ec_pubkey_create(&pubkey, (const __private unsigned char*)privkey);
     
     if (result != 1) {
         output[0] = 0xDEADDEAD;

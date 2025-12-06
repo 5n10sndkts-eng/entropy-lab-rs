@@ -53,7 +53,7 @@ __kernel void mobile_sensor_crack(
     // ECC - FIXED
     public_key_t pub_key;
     // Pass address of the 'key' member, NOT the struct itself!
-    secp256k1_ec_pubkey_create(&pub_key.key, (const __generic unsigned char*)private_key);
+    secp256k1_ec_pubkey_create(&pub_key.key, (const __private unsigned char*)private_key);
     
     // Serialize - Call directly to avoid type mismatch in helper function
     uchar serialized_pubkey[33] __attribute__((aligned(4)));

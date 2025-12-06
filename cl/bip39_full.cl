@@ -18,23 +18,21 @@ static void bip39_get_word(uint index, __private uchar* word_out) {
 
 // Extract 11-bit index from entropy at bit position
 static uint bip39_extract_11bits(const __private uchar* data, uint bit_pos) {
+    // Need to read up to 3 bytes to get 11 bits spanning byte boundaries
     uint byte_pos = bit_pos / 8;
     uint bit_offset = bit_pos % 8;
     
-    // Need to read potentially 3 bytes to get 11 bits
-    uint val = 0;
+    // Read 3 bytes starting at byte_pos and combine into a 24-bit value
+    uint val = ((uint)data[byte_pos] << 16);
+    if (byte_pos + 1 < 17) val |= ((uint)data[byte_pos + 1] << 8);
+    if (byte_pos + 2 < 17) val |= ((uint)data[byte_pos + 2]);
     
-    // Read first byte
-    val = data[byte_pos] & ((1 << (8 - bit_offset)) - 1);
-    val <<= (11 - (8 - bit_offset));
+    // Shift to get the 11 bits we need at the correct position
+    // bit_offset tells us how many bits to skip from the start of the first byte
+    // We want bits starting at bit_offset, for 11 bits
+    uint shift = 24 - 11 - bit_offset;  // Shift right to align 11 bits at LSB
     
-    uint bits_remaining = 11 - (8 - bit_offset);
-    
-    if (bits_remaining > 0 && byte_pos + 1 < 17) {
-        val |= data[byte_pos + 1] >> (8 - bits_remaining);
-    }
-    
-    return val & 0x7FF; // Mask to 11 bits
+    return (val >> shift) & 0x7FF;  // Mask to 11 bits
 }
 
 // Convert 128-bit entropy to 12 BIP39 words

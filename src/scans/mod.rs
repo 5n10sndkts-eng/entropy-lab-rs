@@ -1,8 +1,11 @@
 pub mod android_securerandom;
+pub mod bip3x;
 pub mod cake_wallet;
+pub mod cake_wallet_crack;
 pub mod cake_wallet_dart_prng;
 pub mod cake_wallet_rpc;
 pub mod cake_wallet_targeted;
+#[cfg(feature = "gpu")]
 pub mod gpu_solver;
 pub mod malicious_extension;
 pub mod milk_sad;

@@ -44,7 +44,7 @@ __kernel void mobile_sensor_test(
     
     // Secp256k1 -> Public Key
     public_key_t pub_key;
-    if (secp256k1_ec_pubkey_create(&pub_key, (const __generic unsigned char*)private_key) != 1) {
+    if (secp256k1_ec_pubkey_create(&pub_key, (const __private unsigned char*)private_key) != 1) {
         output[1] = 0xDEADBEEF;
         return;
     }

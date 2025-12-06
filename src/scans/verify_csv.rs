@@ -12,6 +12,7 @@ use std::io::{BufRead, BufReader, Write};
 use std::str::FromStr;
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
+use tracing::info;
 
 struct Hit {
     timestamp: u64,
@@ -34,7 +35,7 @@ struct CsvRow {
 }
 
 pub fn run(csv_path: &str, address_list_path: &str) -> Result<()> {
-    println!("Loading funded addresses from '{}'...", address_list_path);
+    info!("Loading funded addresses from '{}'...", address_list_path);
     let file = File::open(address_list_path).context("Failed to open address list")?;
 
     let reader: Box<dyn BufRead> = if address_list_path.ends_with(".gz") {
@@ -48,7 +49,7 @@ pub fn run(csv_path: &str, address_list_path: &str) -> Result<()> {
     let rate = 0.000001;
     let mut bloom = BloomFilter::with_rate(rate, expected_items);
 
-    println!("Building Bloom filter...");
+    info!("Building Bloom filter...");
     let mut count = 0;
     for (i, line) in reader.lines().enumerate() {
         let line = line?;
@@ -68,9 +69,9 @@ pub fn run(csv_path: &str, address_list_path: &str) -> Result<()> {
         }
     }
 
-    println!("Loaded {} addresses into Bloom filter.", count);
+    info!("Loaded {} addresses into Bloom filter.", count);
 
-    println!("Opening CSV '{}'...", csv_path);
+    info!("Opening CSV '{}'...", csv_path);
     let file = File::open(csv_path).context("Failed to open CSV file")?;
     let mut rdr = csv::Reader::from_reader(file);
 
@@ -96,7 +97,7 @@ pub fn run(csv_path: &str, address_list_path: &str) -> Result<()> {
 
     let hits: Arc<Mutex<Vec<Hit>>> = Arc::new(Mutex::new(Vec::new()));
 
-    println!("Starting verification...");
+    info!("Starting verification...");
 
     let start = Instant::now();
     let batch_size = 10000;
@@ -112,11 +113,10 @@ pub fn run(csv_path: &str, address_list_path: &str) -> Result<()> {
             total_processed += batch.len() as u64;
             let elapsed = start.elapsed().as_secs_f64();
             let speed = total_processed as f64 / elapsed;
-            print!(
-                "\rProcessed {} addresses... (Speed: {:.2} rows/sec, Time: {:.0}s)",
+            info!(
+                "Processed {} addresses... (Speed: {:.2} rows/sec, Time: {:.0}s)",
                 total_processed, speed, elapsed
             );
-            std::io::stdout().flush()?;
             batch.clear();
         }
     }
@@ -124,22 +124,21 @@ pub fn run(csv_path: &str, address_list_path: &str) -> Result<()> {
     if !batch.is_empty() {
         process_batch(&batch, &bloom, &secp, &hits)?;
     }
-    println!();
-
+    
     let potential_hits = hits
         .lock()
         .expect("Failed to lock hits mutex - this indicates a critical threading issue");
-    println!(
+    info!(
         "Scan complete. Found {} potential hits (Bloom filter matches).",
         potential_hits.len()
     );
 
     if potential_hits.is_empty() {
-        println!("No hits found. Exiting.");
+        info!("No hits found. Exiting.");
         return Ok(());
     }
 
-    println!("Verifying potential hits against exact address list...");
+    info!("Verifying potential hits against exact address list...");
 
     // Build a HashSet of the potential addresses for O(1) lookup
     let potential_addr_set: HashSet<String> =
@@ -171,7 +170,7 @@ pub fn run(csv_path: &str, address_list_path: &str) -> Result<()> {
         }
     }
 
-    println!(
+    info!(
         "Verification complete. Confirmed {} valid hits.",
         confirmed_addresses.len()
     );
@@ -188,9 +187,9 @@ pub fn run(csv_path: &str, address_list_path: &str) -> Result<()> {
                 )?;
             }
         }
-        println!("Confirmed hits written to 'verified_hits.csv'.");
+        info!("Confirmed hits written to 'verified_hits.csv'.");
     } else {
-        println!("All potential hits were false positives.");
+        info!("All potential hits were false positives.");
     }
 
     Ok(())

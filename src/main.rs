@@ -1,4 +1,6 @@
 use anyhow::Result;
+use tracing::info;
+use tracing_subscriber;
 use clap::{Parser, Subcommand};
 use entropy_lab_rs::scans;
 
@@ -13,9 +15,17 @@ struct Cli {
 #[derive(Subcommand)]
 enum Commands {
     /// Reproduce Cake Wallet 2024 Vulnerability
-    CakeWallet,
+    CakeWallet {
+        #[arg(long)]
+        limit: Option<u32>,
+    },
     /// Scan only the 8,717 confirmed vulnerable Cake Wallet seeds
     CakeWalletTargeted,
+    /// Find seed from Cake Wallet address (GPU) - checks prefix "100" and 40 addresses
+    CakeWalletCrack {
+        #[arg(long)]
+        target: String,
+    },
     /// Reverse-engineer Cake Wallet seeds using Dart PRNG (time-based)
     CakeWalletDartPrng,
     /// Reproduce Trust Wallet 2023 Vulnerability
@@ -79,6 +89,19 @@ enum Commands {
         #[arg(long)]
         target: Option<String>,
     },
+    /// Build a Bloom Filter from a list of addresses
+    BuildBloom {
+        #[arg(long)]
+        input: String,
+        #[arg(long)]
+        output: String,
+        #[arg(long, default_value = "1000000000")]
+        expected_items: usize,
+        #[arg(long, default_value = "0.0001")]
+        fp_rate: f64,
+    },
+    /// Scan for bip3x (PCG-XSH-RR) vulnerability
+    Bip3x,
 }
 
 const DEFAULT_RPC_URL: &str = "http://127.0.0.1:8332";
@@ -119,27 +142,34 @@ fn get_rpc_credentials(
 }
 
 fn main() -> Result<()> {
+    // Initialize structured logging
+    tracing_subscriber::fmt::init();
+
     let cli = Cli::parse();
 
     match cli.command {
-        Commands::CakeWallet => {
-            println!("Running Cake Wallet Vulnerability Reproduction...");
-            scans::cake_wallet::run()?;
+        Commands::CakeWallet { limit } => {
+            info!("Running Cake Wallet Vulnerability Reproduction...");
+            scans::cake_wallet::run(limit)?;
         }
         Commands::CakeWalletTargeted => {
-            println!("Running Cake Wallet TARGETED Scan (8,717 confirmed vulnerable seeds)...");
+            info!("Running Cake Wallet TARGETED Scan (8,717 confirmed vulnerable seeds)...");
             scans::cake_wallet_targeted::run_targeted()?;
         }
+        Commands::CakeWalletCrack { target } => {
+            info!("Running Cake Wallet GPU Cracker...");
+            scans::cake_wallet_crack::run_crack(&target)?;
+        }
         Commands::CakeWalletDartPrng => {
-            println!("Running Cake Wallet Dart PRNG Scanner (time-based reconstruction)...");
+            info!("Running Cake Wallet Dart PRNG Scanner (time-based reconstruction)...");
             scans::cake_wallet_dart_prng::run()?;
         }
         Commands::TrustWallet { target } => {
-            println!("Running Trust Wallet Vulnerability Reproduction...");
+            info!("Running Trust Wallet Vulnerability Reproduction...");
             scans::trust_wallet::run(target)?;
         }
         Commands::MobileSensor { target } => {
-            println!("Running Mobile Sensor Entropy Reproduction...");
+            info!("Running Mobile Sensor Entropy Reproduction...");
             scans::mobile_sensor::run(target)?;
         }
         Commands::MilkSad {
@@ -148,7 +178,7 @@ fn main() -> Result<()> {
             end_timestamp,
             multipath,
         } => {
-            println!("Running Libbitcoin 'Milk Sad' Vulnerability Reproduction...");
+            info!("Running Libbitcoin 'Milk Sad' Vulnerability Reproduction...");
             if let Some(t) = target {
                 scans::milk_sad::run_with_target(t, start_timestamp, end_timestamp, multipath)?;
             } else {
@@ -156,15 +186,15 @@ fn main() -> Result<()> {
             }
         }
         Commands::MaliciousExtension => {
-            println!("Running Malicious Extension Reproduction...");
+            info!("Running Malicious Extension Reproduction...");
             scans::malicious_extension::run()?;
         }
         Commands::Profanity { target } => {
-            println!("Running Profanity Vanity Address Vulnerability Reproduction...");
+            info!("Running Profanity Vanity Address Vulnerability Reproduction...");
             scans::profanity::run(target)?;
         }
         Commands::VerifyCsv { input, addresses } => {
-            println!("Running CSV Verification...");
+            info!("Running CSV Verification...");
             scans::verify_csv::run(&input, &addresses)?;
         }
         Commands::CakeWalletRpc {
@@ -172,7 +202,7 @@ fn main() -> Result<()> {
             rpc_user,
             rpc_pass,
         } => {
-            println!("Running Cake Wallet RPC Scanner...");
+            info!("Running Cake Wallet RPC Scanner...");
             let (url, user, pass) = get_rpc_credentials(rpc_url, rpc_user, rpc_pass)?;
             scans::cake_wallet_rpc::run(&url, &user, &pass)?;
         }
@@ -183,9 +213,21 @@ fn main() -> Result<()> {
             start_block,
             end_block,
         } => {
-            println!("Running Android SecureRandom Scanner...");
+            info!("Running Android SecureRandom Scanner...");
             let (url, user, pass) = get_rpc_credentials(rpc_url, rpc_user, rpc_pass)?;
             scans::android_securerandom::run(&url, &user, &pass, start_block, end_block)?;
+        }
+        Commands::BuildBloom {
+            input,
+            output,
+            expected_items,
+            fp_rate,
+        } => {
+            info!("Building Bloom Filter...");
+            entropy_lab_rs::utils::bloom_filter::build_from_file(&input, &output, expected_items, fp_rate)?;
+        }
+        Commands::Bip3x => {
+            scans::bip3x::run()?;
         }
     }
 

