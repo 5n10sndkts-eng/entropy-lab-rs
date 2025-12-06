@@ -1,8 +1,8 @@
 use anyhow::Result;
-use bitcoin::{Address, Network};
 use bitcoin::secp256k1::{Secp256k1, SecretKey};
-use tracing::info;
+use bitcoin::{Address, Network};
 use std::time::{SystemTime, UNIX_EPOCH};
+use tracing::info;
 
 /// PCG-XSH-RR-64/32 Implementation
 /// State: 64 bits
@@ -24,7 +24,10 @@ impl Pcg64 {
     }
 
     fn step(&mut self) {
-        self.state = self.state.wrapping_mul(6364136223846793005).wrapping_add(self.inc);
+        self.state = self
+            .state
+            .wrapping_mul(6364136223846793005)
+            .wrapping_add(self.inc);
     }
 
     fn next_u32(&mut self) -> u32 {
@@ -43,48 +46,48 @@ impl Pcg64 {
 /// We scan range of timestamps.
 pub fn run() -> Result<()> {
     info!("Running bip3x (PCG-XSH-RR) Scanner");
-    
+
     // Scan last 5 years? Or user defined?
     // Start with last 1 year for demo, or explicit range.
     // 1 year = 31 million seconds.
     // Fast to scan on CPU.
-    
+
     let now = SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs();
     let start = now - 365 * 24 * 3600; // 1 year ago
     let end = now;
-    
+
     info!("Scanning timestamps from {} to {}", start, end);
-    
+
     let secp = Secp256k1::new();
     let network = Network::Bitcoin;
-    
+
     // For each second
     for t in start..=end {
         let mut rng = Pcg64::new(t);
-        
+
         // Bip3x Usage: Generates Mnemonic? Or Private Key directly?
         // VulnerAbility description says: "Generates private keys using PCG..."
         // Assume direct RNG -> 32 bytes privkey.
-        
+
         let mut priv_bytes = [0u8; 32];
         for i in 0..8 {
             let val = rng.next_u32();
-            priv_bytes[i*4..i*4+4].copy_from_slice(&val.to_le_bytes()); // Endianness unknown, try Little
+            priv_bytes[i * 4..i * 4 + 4].copy_from_slice(&val.to_le_bytes()); // Endianness unknown, try Little
         }
-        
+
         if let Ok(sk) = SecretKey::from_slice(&priv_bytes) {
-             let secp_pub = bitcoin::secp256k1::PublicKey::from_secret_key(&secp, &sk);
-             let pubkey = bitcoin::PublicKey::new(secp_pub);
-             let _address = Address::p2pkh(pubkey, network);
-             // Check against Bloom filter or list if available
-             // For now, just print every 1M?
+            let secp_pub = bitcoin::secp256k1::PublicKey::from_secret_key(&secp, &sk);
+            let pubkey = bitcoin::PublicKey::new(secp_pub);
+            let _address = Address::p2pkh(pubkey, network);
+            // Check against Bloom filter or list if available
+            // For now, just print every 1M?
         }
-        
+
         if t % 1_000_000 == 0 {
             info!("Scanned up to timestamp {}", t);
         }
     }
-    
+
     info!("Scan complete.");
     Ok(())
 }

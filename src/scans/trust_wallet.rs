@@ -39,7 +39,9 @@ pub fn run(target: Option<String>) -> Result<()> {
 
     #[cfg(not(feature = "gpu"))]
     {
-        anyhow::bail!("This scanner requires GPU acceleration. Please recompile with --features gpu");
+        anyhow::bail!(
+            "This scanner requires GPU acceleration. Please recompile with --features gpu"
+        );
     }
 
     #[cfg(feature = "gpu")]

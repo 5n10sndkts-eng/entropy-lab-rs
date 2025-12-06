@@ -118,11 +118,11 @@ pub fn run() -> Result<()> {
 }
 
 #[cfg(feature = "gpu")]
-use bitcoin::{Network, Address};
+use bitcoin::bip32::{DerivationPath, Xpriv};
 #[cfg(feature = "gpu")]
 use bitcoin::secp256k1::Secp256k1;
 #[cfg(feature = "gpu")]
-use bitcoin::bip32::{DerivationPath, Xpriv};
+use bitcoin::{Address, Network};
 #[cfg(feature = "gpu")]
 use std::str::FromStr;
 
@@ -151,19 +151,18 @@ fn process_batch_gpu(
             let seed = crate::utils::electrum::mnemonic_to_seed(&mnemonic_str);
             let network = Network::Bitcoin;
             let secp = Secp256k1::new();
-            
+
             // Electrum derivation path: m/0'/0/0
             if let Ok(path) = DerivationPath::from_str("m/0'/0/0") {
                 if let Ok(root) = Xpriv::new_master(network, &seed) {
-                     if let Ok(child) = root.derive_priv(&secp, &path) {
+                    if let Ok(child) = root.derive_priv(&secp, &path) {
                         let pubkey = child.to_keypair(&secp).public_key();
                         let compressed_pubkey = bitcoin::CompressedPublicKey(pubkey);
                         let address = Address::p2wpkh(&compressed_pubkey, network);
                         warn!("ADDRESS (Electrum m/0'/0/0): {}", address);
-                     }
+                    }
                 }
             }
-
         }
     }
 
