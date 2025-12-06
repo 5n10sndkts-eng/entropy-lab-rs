@@ -114,54 +114,54 @@ This document provides a high-level summary of the gap analysis comparing the en
 ## Recommended Implementation Roadmap
 
 ### Phase 1: Critical Fixes (1-2 weeks)
-1. ✅ **Randstorm/BitcoinJS scanner** (HIGHEST PRIORITY)
+1. 🔲 **Randstorm/BitcoinJS scanner** (HIGHEST PRIORITY)
    - Implement weak Math.random() + JSBN emulation
    - Scan 2011-2015 timeframe
    - Support compressed and uncompressed keys
    - Check P2PKH, P2SH, P2WPKH formats
 
-2. ✅ **Electrum seed validation** (CRITICAL)
+2. 🔲 **Electrum seed validation** (CRITICAL)
    - Add HMAC-SHA512 prefix check for Cake Wallet
    - Fix entropy generation to match Electrum format
    - Validate against "Seed version" with "100" prefix
 
 ### Phase 2: High Priority Features (2-3 weeks)
-3. ✅ **Trust Wallet iOS scanner** (HIGH)
+3. 🔲 **Trust Wallet iOS scanner** (HIGH)
    - Implement minstd_rand0 LCG PRNG
    - Scan July 2023 timeframe
    - Add CVE-2024-23660 coverage
 
-4. ✅ **Multi-path derivation** (HIGH)
+4. 🔲 **Multi-path derivation** (HIGH)
    - Implement BIP44, BIP49, BIP84, BIP86 paths
    - Add P2SH-SegWit (3xxx) addresses
    - Add Native SegWit (bc1q) addresses
    - Add Taproot (bc1p) addresses
 
-5. ✅ **Extended address scanning** (HIGH)
+5. 🔲 **Extended address scanning** (HIGH)
    - Scan indices 0-19 (BIP44 gap limit) minimum
    - Scan 0-100+ for Cake Wallet
    - Add change address support (m/x'/1/y)
 
 ### Phase 3: Medium Priority (3-4 weeks)
-6. ✅ **Bloom filter integration** (MEDIUM)
+6. 🔲 **Bloom filter integration** (MEDIUM)
    - Download and process Loyce.club dataset
    - Implement efficient bloom filter
    - Integrate with all scanners
 
-7. ✅ **bip3x PCG scanner** (MEDIUM)
+7. 🔲 **bip3x PCG scanner** (MEDIUM)
    - Implement PCG-XSH-RR algorithm
    - Scan JavaScript wallet implementations
 
-8. ✅ **Multiple seed lengths** (MEDIUM)
+8. 🔲 **Multiple seed lengths** (MEDIUM)
    - Support 18-word seeds (192 bits) - bx default
    - Support 24-word seeds (256 bits)
    - Support 15 and 21-word variants
 
 ### Phase 4: Completeness (4-6 weeks)
-9. ✅ **Complete Profanity implementation**
-10. ✅ **Add uncompressed key support**
-11. ✅ **Comprehensive test suite**
-12. ✅ **Documentation updates**
+9. 🔲 **Complete Profanity implementation**
+10. 🔲 **Add uncompressed key support**
+11. 🔲 **Comprehensive test suite**
+12. 🔲 **Documentation updates**
 
 ---
 

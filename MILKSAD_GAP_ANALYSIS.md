@@ -185,7 +185,7 @@ fn validate_electrum_segwit_prefix(mnemonic: &str) -> bool {
 ```
 
 **Gap Details:**
-- Dart Random() internal state is 64-bit xorshift128+
+- Dart Random() internal state is 64-bit `xorshift128+`
 - Implementation appears correct but may need validation
 - Current scanner samples 5 offsets per second (0, 100ms, 200ms, 500ms, 999ms)
 - May miss some edge cases or specific timestamp granularities
@@ -577,7 +577,7 @@ let end_ts = 1669247999u32;   // Nov 23 2022 23:59:59 UTC
 1. Mersenne Twister (MT19937) - Libbitcoin, Trust Wallet browser
 2. minstd_rand0 (LCG: a=16807) - Trust Wallet iOS
 3. minstd_rand (LCG: a=48271) - Some C++ wallets
-4. Dart xorshift128+ - Cake Wallet
+4. Dart `xorshift128+` - Cake Wallet
 5. JavaScript Math.random() + JSBN - BitcoinJS/Randstorm
 6. PCG-XSH-RR - bip3x library
 7. RC4 PRNG - BitcoinJS (after weak seeding)
