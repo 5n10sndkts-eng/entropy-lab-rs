@@ -222,13 +222,16 @@ entropy-lab-rs/
 
 3. **Performance**: Some scanners can be computationally intensive. Consider using the `--release` flag for production scanning.
 
-4. **Incomplete Coverage**: See [MILKSAD_GAP_ANALYSIS.md](MILKSAD_GAP_ANALYSIS.md) for a comprehensive analysis of missing vulnerability scanners and features compared to milksad.info research. Notable missing scanners:
-   - **Randstorm/BitcoinJS (2011-2015)**: Math.random() + JSBN vulnerability affecting Blockchain.info, CoinPunk, and others
-   - **Trust Wallet iOS (CVE-2024-23660)**: minstd_rand0 LCG PRNG variant
-   - **bip3x Library**: PCG-XSH-RR PRNG vulnerability
-   - **Multi-path derivation**: BIP44/49/84/86 support
-   - **Extended address indices**: Currently only checks index 0
-   - **Electrum seed validation**: Missing version prefix checks for Cake Wallet
+4. **Incomplete Coverage**: This project implements several vulnerability scanners but is missing some critical ones documented at milksad.info:
+   - **📊 [Gap Analysis Summary](GAP_ANALYSIS_SUMMARY.md)** - Executive overview of missing features
+   - **📋 [Detailed Gap Analysis](MILKSAD_GAP_ANALYSIS.md)** - Complete technical analysis
+   
+   **Highest Priority Missing:**
+   - **Randstorm/BitcoinJS (2011-2015)**: Affects 1.4M+ BTC ($1B+ at risk) - Blockchain.info, CoinPunk, BrainWallet
+   - **Electrum seed validation**: Current Cake Wallet scanner may generate invalid seeds
+   - **Trust Wallet iOS (CVE-2024-23660)**: minstd_rand0 LCG variant not implemented
+   - **Multi-path derivation**: Only checks single path and address index 0
+   - **Extended address indices**: Missing ~95%+ of addresses per seed
 
 ## Security & Ethics
 
