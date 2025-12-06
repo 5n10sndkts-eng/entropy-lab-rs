@@ -8,8 +8,7 @@
 //!
 //! Based on reference implementation from milksad/rust-wallet-helper
 
-use bitcoin::secp256k1::{PublicKey, Secp256k1, SecretKey};
-use sha2::{Sha256, Digest};
+use bitcoin::secp256k1::PublicKey;
 
 // Network version bytes
 pub const BITCOIN_P2PKH_VERSION: u8 = 0x00;
@@ -39,7 +38,6 @@ pub fn eth_address_from_pubkey(pubkey: &PublicKey) -> String {
 
 /// Generate Litecoin P2PKH address from compressed public key
 pub fn ltc_p2pkh_address(pubkey: &bitcoin::CompressedPublicKey) -> String {
-    use bitcoin::hashes::Hash;
     let pubkey_hash = pubkey.pubkey_hash();
     let hash_bytes: &[u8; 20] = pubkey_hash.as_raw_hash().as_ref();
     p2pkh_from_hash_with_version(hash_bytes, LITECOIN_P2PKH_VERSION)
@@ -47,7 +45,6 @@ pub fn ltc_p2pkh_address(pubkey: &bitcoin::CompressedPublicKey) -> String {
 
 /// Generate Litecoin P2SH-wrapped SegWit address
 pub fn ltc_p2shwpkh_address(pubkey: &bitcoin::CompressedPublicKey) -> String {
-    use bitcoin::hashes::{Hash, hash160};
     use sha2::{Sha256, Digest};
     use ripemd::Ripemd160;
     

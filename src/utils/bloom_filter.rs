@@ -43,7 +43,7 @@ pub fn build_from_file(
 }
 
 /// Load a Bloom Filter from a file (Stub)
-pub fn load_from_file(path: &str) -> Result<Bloom<String>> {
+pub fn load_from_file(_path: &str) -> Result<Bloom<String>> {
     anyhow::bail!("Loading bloom filter not implemented (serialization issue)")
 }
 

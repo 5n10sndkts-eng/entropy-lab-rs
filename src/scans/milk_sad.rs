@@ -368,6 +368,7 @@ pub fn generate_milk_sad_entropy(timestamp: u32) -> [u8; 16] {
 
 // Non-GPU version for RPC scan
 #[cfg(not(feature = "gpu"))]
+#[allow(dead_code)]
 fn generate_milk_sad_entropy(timestamp: u32) -> [u8; 16] {
     let vec = generate_entropy_msb(timestamp, EntropySize::Bits128);
     let mut arr = [0u8; 16];
@@ -461,7 +462,7 @@ mod tests {
         assert_eq!(entropy.len(), 16);
         
         let mnemonic = Mnemonic::from_entropy(&entropy).unwrap();
-        let words: Vec<&str> = mnemonic.word_iter().collect();
+        let words: Vec<&str> = mnemonic.words().collect();
         assert_eq!(words[0], "milk");
         assert_eq!(words[1], "sad");
     }
@@ -520,7 +521,7 @@ mod tests {
         // This is THE defining test for libbitcoin/bx vulnerability
         let entropy_ts0 = generate_entropy_msb(0, EntropySize::Bits256);
         let mnemonic = Mnemonic::from_entropy(&entropy_ts0).unwrap();
-        let words: Vec<&str> = mnemonic.word_iter().collect();
+        let words: Vec<&str> = mnemonic.words().collect();
         
         assert_eq!(words[0], "milk", "First word must be 'milk' for timestamp 0");
         assert_eq!(words[1], "sad", "Second word must be 'sad' for timestamp 0");
@@ -533,7 +534,7 @@ mod tests {
         assert_eq!(mnemonic_128.word_count(), 12);
         
         // The 12-word version also starts with "milk sad" for timestamp 0
-        let words_128: Vec<&str> = mnemonic_128.word_iter().collect();
+        let words_128: Vec<&str> = mnemonic_128.words().collect();
         assert_eq!(words_128[0], "milk", "128-bit: First word must be 'milk'");
         assert_eq!(words_128[1], "sad", "128-bit: Second word must be 'sad'");
     }

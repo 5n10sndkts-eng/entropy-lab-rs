@@ -13,7 +13,6 @@ use tracing::{info, warn};
 use bitcoin::secp256k1::{Secp256k1, SecretKey};
 use bitcoin::{Address, Network, CompressedPublicKey};
 use rand_mt::Mt19937GenRand32;
-use std::str::FromStr;
 
 /// Pattern for byte extraction from PRNG
 #[derive(Debug, Clone, Copy)]

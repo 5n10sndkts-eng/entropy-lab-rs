@@ -1,5 +1,5 @@
 use anyhow::Result;
-use tracing::{info, warn, error};
+use tracing::{info, warn};
 
 #[cfg(test)]
 use bip39::Mnemonic;
