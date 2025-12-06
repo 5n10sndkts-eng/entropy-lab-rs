@@ -44,7 +44,7 @@ pub fn run_with_target(
     let mut target_hash160: [u8; 20] = [0; 20];
     target_hash160.copy_from_slice(target_hash160_slice);
 
-    println!("Target Hash160: {}", hex::encode(&target_hash160));
+    println!("Target Hash160: {}", hex::encode(target_hash160));
 
     // Time range: Allow custom or default to 2011-2023
     let start_ts = start_ts_opt.unwrap_or(1293840000u32); // 2011-01-01
@@ -78,7 +78,7 @@ pub fn run_with_target(
                     println!("\n[VERIFIED] 🔓 CRACKED SUCCESSFUL!");
                     println!("Timestamp: {}", timestamp);
                     println!("Address Index: {}", addr_idx);
-                    println!("Entropy: {}", hex::encode(&entropy));
+                    println!("Entropy: {}", hex::encode(entropy));
                     println!(
                         "Mnemonic: {}",
                         Mnemonic::from_entropy(&entropy)
@@ -109,7 +109,7 @@ pub fn run_with_target(
                 if derived_address == target {
                     println!("\n[VERIFIED] 🔓 CRACKED SUCCESSFUL!");
                     println!("Timestamp: {}", timestamp);
-                    println!("Entropy: {}", hex::encode(&entropy));
+                    println!("Entropy: {}", hex::encode(entropy));
                     println!(
                         "Mnemonic: {}",
                         Mnemonic::from_entropy(&entropy)
@@ -166,7 +166,7 @@ fn generate_address_from_entropy(entropy: &[u8; 16], addr_index: u32) -> String 
 
     let private_key = bitcoin::PrivateKey::new(derived.private_key, Network::Bitcoin);
     let pubkey = private_key.public_key(&secp);
-    let address = Address::p2pkh(&pubkey, Network::Bitcoin);
+    let address = Address::p2pkh(pubkey, Network::Bitcoin);
 
     address.to_string()
 }
