@@ -1,4 +1,4 @@
-use ocl::{Buffer, Device, MemFlags, ProQue};
+use ocl::{Buffer, MemFlags, ProQue};
 use tracing::{error, info};
 
 // Heuristic multiplier to estimate warp/wavefront size from vector width
