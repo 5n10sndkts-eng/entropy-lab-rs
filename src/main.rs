@@ -102,6 +102,15 @@ enum Commands {
     },
     /// Scan for bip3x (PCG-XSH-RR) vulnerability
     Bip3x,
+    /// Scan for EC-New (Direct PRNG) vulnerability
+    EcNew {
+        #[arg(long)]
+        target: String,
+        #[arg(long)]
+        start: Option<u32>,
+        #[arg(long)]
+        end: Option<u32>,
+    },
 }
 
 const DEFAULT_RPC_URL: &str = "http://127.0.0.1:8332";
@@ -228,6 +237,9 @@ fn main() -> Result<()> {
         }
         Commands::Bip3x => {
             scans::bip3x::run()?;
+        }
+        Commands::EcNew { target, start, end } => {
+            scans::ec_new::run(&target, start, end)?;
         }
     }
 

@@ -5,6 +5,7 @@ pub mod cake_wallet_crack;
 pub mod cake_wallet_dart_prng;
 pub mod cake_wallet_rpc;
 pub mod cake_wallet_targeted;
+pub mod ec_new;
 #[cfg(feature = "gpu")]
 pub mod gpu_solver;
 pub mod malicious_extension;
