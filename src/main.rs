@@ -13,6 +13,9 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
+    /// Launch GUI interface for interactive scanning
+    #[cfg(feature = "gui")]
+    Gui,
     /// Reproduce Cake Wallet 2024 Vulnerability
     CakeWallet {
         #[arg(long)]
@@ -171,6 +174,11 @@ fn main() -> Result<()> {
     let cli = Cli::parse();
 
     match cli.command {
+        #[cfg(feature = "gui")]
+        Commands::Gui => {
+            info!("Launching GUI interface...");
+            entropy_lab_rs::gui::run_gui()?;
+        }
         Commands::CakeWallet { limit } => {
             info!("Running Cake Wallet Vulnerability Reproduction...");
             scans::cake_wallet::run(limit)?;

@@ -1,4 +1,6 @@
 use anyhow::Result;
+#[cfg(feature = "gpu")]
+use tracing::error;
 use tracing::{info, warn};
 
 #[cfg(test)]

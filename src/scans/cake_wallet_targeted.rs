@@ -8,13 +8,11 @@ use tracing::info;
 #[cfg(feature = "gpu")]
 use bip39::Mnemonic;
 #[cfg(feature = "gpu")]
-use bitcoin::hashes::HashEngine;
-#[cfg(feature = "gpu")]
 use bitcoin::{Address, CompressedPublicKey, Network};
 #[cfg(feature = "gpu")]
 use hex;
 #[cfg(feature = "gpu")]
-use sha2::Sha256;
+use sha2::{Digest, Sha256};
 #[cfg(feature = "gpu")]
 use tracing::warn;
 
