@@ -10,6 +10,8 @@ use std::fmt;
 type HmacSha512 = Hmac<Sha512>;
 
 /// Electrum wordlist (same as BIP39 English wordlist)
+/// Note: This wordlist is the same as BIP39, but Electrum uses it differently
+/// with version checking via HMAC-SHA512. Currently only used for reference.
 const WORDLIST: &[&str] = &include!("data/electrum_wordlist.txt");
 
 /// Version prefixes for different Electrum wallet types
@@ -143,8 +145,8 @@ fn check_version_prefix(mnemonic: &str, expected_prefix: &str) -> Result<bool> {
 
 /// Normalize text for Electrum (NFKD normalization)
 fn normalize_text(text: &str) -> String {
-    // For now, just use the text as-is
-    // Proper implementation would use Unicode NFKD normalization
+    // TODO: Implement proper Unicode NFKD normalization for full Electrum compatibility
+    // For now, just use basic trimming and lowercasing which works for ASCII mnemonics
     text.trim().to_lowercase()
 }
 
