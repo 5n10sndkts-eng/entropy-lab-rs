@@ -71,11 +71,11 @@ pub fn run(rpc_url: &str, rpc_user: &str, rpc_pass: &str) -> Result<()> {
         }
 
         // Generate addresses on GPU for all 3 derivation paths
-        // Purpose parameter corresponds to BIP44 purpose in derivation path m/purpose'/0'/0'/0/0
-        // 44 = m/44'/0'/0'/0/0 (BIP44 Legacy), 84 = m/84'/0'/0'/0/0 (BIP84 SegWit), 0 = m/0'/0/0 (Cake Wallet)
-        let addresses_44 = solver.compute_batch(&entropies, 44)?;
-        let addresses_84 = solver.compute_batch(&entropies, 84)?;
-        let addresses_0 = solver.compute_batch(&entropies, 0)?;
+        // Purpose parameter corresponds to derivation path
+        // 44 = m/44'/0'/0'/0/0 (BIP44 Legacy), 84 = m/84'/0'/0'/0/0 (BIP84 SegWit), 0 = m/0'/0/0 (Cake Wallet Electrum)
+        let addresses_44 = solver.compute_batch(&entropies, 44)?; // BIP39 seed
+        let addresses_84 = solver.compute_batch(&entropies, 84)?; // BIP39 seed
+        let addresses_0 = solver.compute_batch_electrum(&entropies, 0)?; // Electrum seed
 
         // Check each address via RPC
         for idx in 0..current_batch_size {
@@ -166,22 +166,39 @@ pub fn run(rpc_url: &str, rpc_user: &str, rpc_pass: &str) -> Result<()> {
 #[allow(unused_variables)]
 fn decode_address_from_gpu(
     addr_bytes: &[u8; 25],
-    _addr_type: &str,
-    _network: Network,
+    addr_type: &str,
+    network: Network,
 ) -> Result<String> {
-    // GPU kernels output base58-encoded addresses as null-terminated strings
-    // The 25-byte buffer contains the ASCII string representation
-    // Find the null terminator and convert to string
-    let addr_str = std::str::from_utf8(addr_bytes)
-        .unwrap_or("")
-        .trim_end_matches('\0');
-
-    // Validate it's not empty
-    if addr_str.is_empty() {
-        return Err(anyhow::anyhow!("GPU returned empty address"));
+    match addr_type {
+        "Cake" | "SegWit" => {
+            // P2WPKH SegWit: first 20 bytes are the witness program
+            // GPU outputs raw 20-byte hash160, remaining bytes are zeros
+            let witness_program = &addr_bytes[0..20];
+            
+            // Create P2WPKH address from witness program
+            use bitcoin::WitnessVersion;
+            let wp = bitcoin::WitnessProgram::new(
+                WitnessVersion::V0,
+                witness_program,
+            ).map_err(|e| anyhow::anyhow!("Invalid witness program: {}", e))?;
+            
+            let address = Address::from_witness_program(wp, network);
+            Ok(address.to_string())
+        }
+        "Legacy" => {
+            // P2PKH Legacy: base58-encoded address as null-terminated ASCII string
+            let addr_str = std::str::from_utf8(addr_bytes)
+                .unwrap_or("")
+                .trim_end_matches('\0');
+            
+            if addr_str.is_empty() {
+                return Err(anyhow::anyhow!("GPU returned empty address"));
+            }
+            
+            Ok(addr_str.to_string())
+        }
+        _ => Err(anyhow::anyhow!("Unknown address type: {}", addr_type))
     }
-
-    Ok(addr_str.to_string())
 }
 
 /// CPU-only fallback implementation (original code)

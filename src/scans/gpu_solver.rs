@@ -40,6 +40,7 @@ impl GpuSolver {
             "bip39_wordlist_complete",
             "bip39_full",
             "batch_address",
+            "batch_address_electrum",
             "batch_cake_wallet",
             "cake_hash",
             "mobile_sensor_hash",
@@ -168,6 +169,26 @@ impl GpuSolver {
         entropies: &[[u8; 16]],
         purpose: u32,
     ) -> ocl::Result<Vec<[u8; 25]>> {
+        self.compute_batch_with_kernel(&self.kernel_name, entropies, purpose)
+    }
+
+    /// Compute addresses using Electrum seed derivation (with "electrum" salt)
+    /// This is specifically for Cake Wallet vulnerability scanning
+    pub fn compute_batch_electrum(
+        &self,
+        entropies: &[[u8; 16]],
+        purpose: u32,
+    ) -> ocl::Result<Vec<[u8; 25]>> {
+        self.compute_batch_with_kernel("batch_address_electrum", entropies, purpose)
+    }
+
+    /// Internal method to compute addresses using a specified kernel
+    fn compute_batch_with_kernel(
+        &self,
+        kernel_name: &str,
+        entropies: &[[u8; 16]],
+        purpose: u32,
+    ) -> ocl::Result<Vec<[u8; 25]>> {
         let batch_size = entropies.len();
         if batch_size == 0 {
             return Ok(Vec::new());
@@ -222,7 +243,7 @@ impl GpuSolver {
 
         let kernel = self
             .pro_que
-            .kernel_builder(&self.kernel_name)
+            .kernel_builder(kernel_name)
             .arg(&buffer_hi)
             .arg(&buffer_lo)
             .arg(&buffer_out)

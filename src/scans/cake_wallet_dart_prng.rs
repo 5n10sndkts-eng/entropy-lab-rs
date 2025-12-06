@@ -124,26 +124,12 @@ fn process_batch_gpu(
         if let Ok(mnemonic) = Mnemonic::from_entropy(&entropy) {
             println!("  Mnemonic: {}", mnemonic);
 
-            // Generate address via GPU (purpose=200) for final output
-            // We construct a single-item batch for address generation
-            let mut entropy_padded = [0u8; 16];
-            entropy_padded[0..8].copy_from_slice(&timestamp_us.to_le_bytes());
-            // Note: batch_address.cl expects timestamp in entropies_hi (bytes 8..16) for purpose=200?
-            // Let's check batch_address.cl:
-            // "ulong timestamp_us = entropies_hi[idx];"
-            // So yes, we need to put it in 8..16.
-            // Wait, in cake_hash.cl we passed timestamp directly.
-            // But for address generation we use batch_address.cl.
-            // So we need to pack it correctly.
-
-            // Actually, let's just use CPU for address generation here since it's just 1 match.
-            // Or use the existing solver.compute_batch but pack correctly.
-
-            // Let's pack into 8..16 for batch_address.cl
+            // Generate address using Electrum seed derivation
+            // Pack timestamp into entropy for GPU address generation
             let mut ent_for_addr = [0u8; 16];
             ent_for_addr[8..16].copy_from_slice(&timestamp_us.to_le_bytes());
 
-            let addresses = solver.compute_batch(&[ent_for_addr], 200)?;
+            let addresses = solver.compute_batch_electrum(&[ent_for_addr], 0)?; // purpose=0 for m/0'/0/0
             if let Some(addr) = addresses.first() {
                 println!("ADDRESS: {}", hex::encode(addr));
             }
