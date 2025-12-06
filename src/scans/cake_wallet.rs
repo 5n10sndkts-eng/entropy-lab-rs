@@ -1,5 +1,7 @@
 use anyhow::Result;
-use tracing::{error, info, warn};
+#[cfg(feature = "gpu")]
+use tracing::error;
+use tracing::{info, warn};
 
 #[cfg(test)]
 use bip39::Mnemonic;

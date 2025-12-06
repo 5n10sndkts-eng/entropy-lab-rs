@@ -6,9 +6,17 @@ A research tool for identifying and analyzing cryptocurrency wallet vulnerabilit
 
 Entropy Lab RS is a Rust-based security research tool that scans for various known wallet vulnerabilities by reproducing weak random number generation patterns. This tool is designed for security researchers, white-hat hackers, and blockchain security professionals to identify vulnerable wallets and understand entropy weaknesses.
 
+**NEW**: Now includes a graphical user interface (GUI) for easier interaction and visualization!
+
 ## Features
 
-This tool includes scanners for the following known vulnerabilities:
+### User Interface
+
+- **🖥️ Graphical User Interface (GUI)**: Interactive desktop application with real-time progress tracking
+- **⌨️ Command-Line Interface (CLI)**: Traditional CLI for scripting and automation
+- **🚀 GPU Acceleration**: Hardware-accelerated scanning for maximum performance
+- **📊 Real-time Progress**: Live status updates and progress bars
+- **⚙️ Easy Configuration**: User-friendly settings for all scanning options
 
 ### Implemented Scanners
 
@@ -56,31 +64,63 @@ cd entropy-lab-rs
 ```
 
 2. Build the project:
+
+**For GUI (recommended):**
 ```bash
-cargo build --release
+cargo build --release --features "gpu,gui"
 ```
 
-Note: If you encounter OpenCL linking errors and don't need GPU features, you can comment out the `ocl` dependency in `Cargo.toml`.
+**For CLI only:**
+```bash
+cargo build --release --features gpu
+```
+
+**Without GPU support:**
+```bash
+cargo build --release --features gui
+```
+
+Note: If you encounter OpenCL linking errors and don't need GPU features, you can build without the `gpu` feature.
 
 ## Usage
 
-The tool provides multiple subcommands for different vulnerability scanners:
+### Graphical User Interface (GUI)
 
-### Basic Usage
+Launch the GUI for an interactive experience:
+
+```bash
+# With GPU support
+cargo run --release --features "gpu,gui" -- gui
+
+# Without GPU support  
+cargo run --release --features gui -- gui
+```
+
+The GUI provides:
+- Scanner selection with descriptions
+- Real-time progress tracking
+- Easy configuration of all parameters
+- GPU acceleration status indicator
+- Advanced options for RPC configuration
+- Status display with results and errors
+
+### Command-Line Interface (CLI)
+
+The tool provides multiple subcommands for different vulnerability scanners:
 
 ```bash
 # Scan for Cake Wallet vulnerability
-cargo run --release -- cake-wallet
+cargo run --release --features gpu -- cake-wallet
 
 # Scan for Trust Wallet vulnerability
-cargo run --release -- trust-wallet
+cargo run --release --features gpu -- trust-wallet
 
 # Scan for Milk Sad vulnerability with specific time range
-cargo run --release -- milk-sad --start-timestamp 1609459200 --end-timestamp 1640995200
+cargo run --release --features gpu -- milk-sad --start-timestamp 1609459200 --end-timestamp 1640995200
 
 # Scan for Research Update #13 wallets (2018, 24-word, BIP49)
 # This scans for the 224k+ wallet cluster discovered in July 2025
-cargo run --release -- milk-sad \
+cargo run --release --features gpu -- milk-sad \
   --start-timestamp 1514764800 \
   --end-timestamp 1546300799 \
   --multipath \
@@ -216,6 +256,7 @@ cargo fmt
 entropy-lab-rs/
 ├── src/
 │   ├── main.rs              # CLI interface
+│   ├── gui.rs               # GUI interface (egui)
 │   ├── lib.rs               # Library exports
 │   └── scans/               # Scanner implementations
 │       ├── mod.rs
@@ -223,17 +264,44 @@ entropy-lab-rs/
 │       ├── trust_wallet.rs
 │       ├── milk_sad.rs
 │       ├── android_securerandom.rs
+│       ├── gpu_solver.rs    # GPU acceleration
 │       └── ...
+├── cl/                      # OpenCL kernels
+├── assets/                  # GUI resources
 ├── tests/                   # Integration tests
 ├── Cargo.toml              # Dependencies
 └── README.md               # This file
 ```
 
+## GPU Acceleration
+
+This project includes extensive GPU acceleration support via OpenCL:
+
+### GPU Features
+
+- **Automatic Detection**: GUI automatically detects GPU availability
+- **Fallback Support**: Gracefully falls back to CPU if GPU is unavailable
+- **Performance**: 10-100x speedup for supported scanners
+- **Multiple Scanners**: Most vulnerability scanners support GPU acceleration
+- **Device-Aware**: Optimizes work group sizing based on GPU capabilities
+
+### Supported Scanners with GPU
+
+- Cake Wallet (2024) ✓
+- Cake Wallet Targeted ✓
+- Trust Wallet ✓
+- Mobile Sensor ✓
+- Milk Sad ✓
+- Profanity ✓
+- Cake Wallet Dart PRNG ✓
+
+See [OPENCL_OPTIMIZATIONS.md](OPENCL_OPTIMIZATIONS.md) for detailed performance information.
+
 ## Known Limitations
 
 1. **Android SecureRandom Scanner**: Implements private key recovery from duplicate R values (nonce reuse). Recovery requires access to previous transactions via RPC to compute the sighash. If previous transactions are not available or pruned, recovery will fail but duplicate R values will still be detected.
 
-2. **GPU Features**: Requires OpenCL installation. If not available, the tool will fail at link time. Consider making OpenCL optional via feature flags for systems without GPU support.
+2. **GPU Features**: Requires OpenCL installation. If not available, the tool will fall back to CPU mode when using the `gpu` feature, or fail at compile time without proper OpenCL libraries.
 
 3. **Performance**: Some scanners can be computationally intensive. Consider using the `--release` flag for production scanning.
 
