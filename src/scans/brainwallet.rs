@@ -48,10 +48,10 @@ pub fn run_single(
         let compressed = CompressedPublicKey(pubkey_secp);
         
         // Generate various address types
-        let addr_p2pkh = Address::p2pkh(&compressed, network);
+        let addr_p2pkh = Address::p2pkh(compressed, network);
         let addr_p2wpkh = Address::p2wpkh(&compressed, network);
         
-        info!("Private Key: {}", hex::encode(&privkey));
+        info!("Private Key: {}", hex::encode(privkey));
         info!("P2PKH:  {}", addr_p2pkh);
         info!("P2WPKH: {}", addr_p2wpkh);
         
@@ -99,20 +99,20 @@ pub fn run_file(
             let pubkey_secp = secret.public_key(&secp);
             let compressed = CompressedPublicKey(pubkey_secp);
             
-            let addr_p2pkh = Address::p2pkh(&compressed, network);
+            let addr_p2pkh = Address::p2pkh(compressed, network);
             let addr_p2wpkh = Address::p2wpkh(&compressed, network);
             
             if addr_p2pkh.to_string() == target || addr_p2wpkh.to_string() == target {
                 warn!("\n🎯 FOUND MATCH!");
                 warn!("Passphrase: \"{}\"", passphrase);
-                warn!("Private Key: {}", hex::encode(&privkey));
+                warn!("Private Key: {}", hex::encode(privkey));
                 warn!("Address: {}", addr_p2pkh);
                 return Ok(());
             }
         }
         
         checked += 1;
-        if checked % 100_000 == 0 {
+        if checked.is_multiple_of(100_000) {
             let elapsed = start_time.elapsed().as_secs_f64();
             let speed = checked as f64 / elapsed;
             info!("Checked {} passphrases | {:.0}/s", checked, speed);
@@ -129,7 +129,7 @@ fn derive_key(passphrase: &str, hash_type: HashType) -> [u8; 32] {
         HashType::Sha256 { iterations } => {
             let mut hash = Sha256::digest(passphrase.as_bytes());
             for _ in 1..iterations {
-                hash = Sha256::digest(&hash);
+                hash = Sha256::digest(hash);
             }
             let mut key = [0u8; 32];
             key.copy_from_slice(&hash);

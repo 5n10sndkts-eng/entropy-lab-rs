@@ -61,7 +61,7 @@ pub fn run(target: &str, start_ts: u32, end_ts: u32) -> Result<()> {
                 if let Ok(path) = DerivationPath::from_str("m/44'/0'/0'/0/0") {
                     if let Ok(child) = root.derive_priv(&secp, &path) {
                         let pubkey = child.to_keypair(&secp).public_key();
-                        let address = Address::p2pkh(&bitcoin::PublicKey::new(pubkey), network);
+                        let address = Address::p2pkh(bitcoin::PublicKey::new(pubkey), network);
                         
                         if address.to_string() == target {
                              warn!("\n🎯 FOUND MATCH!");
@@ -76,7 +76,7 @@ pub fn run(target: &str, start_ts: u32, end_ts: u32) -> Result<()> {
         }
         
         checked += 1;
-        if checked % 500_000 == 0 {
+        if checked.is_multiple_of(500_000) {
             info!("Scanned {} timestamps...", checked);
         }
     }
