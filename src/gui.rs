@@ -433,9 +433,13 @@ impl EntropyLabApp {
     }
 
     fn stop_scan(&mut self) {
+        // Note: Complete thread cancellation would require additional infrastructure
+        // such as Arc<AtomicBool> or channels for cooperative cancellation.
+        // For now, we update the UI state. The scan thread will complete its current operation.
         *self.status.lock().unwrap() = ScanStatus::Idle;
-        // Note: We can't easily stop the thread, but we can update status
-        // A more complete implementation would use channels or atomic flags
+        
+        // Future enhancement: Add proper cancellation mechanism
+        // This would require passing a cancellation token to run_scan()
     }
 }
 
@@ -556,7 +560,10 @@ pub fn run_gui() -> Result<()> {
             .with_min_inner_size([700.0, 500.0])
             .with_icon(
                 eframe::icon_data::from_png_bytes(&include_bytes!("../assets/icon.png")[..])
-                    .unwrap_or_default(),
+                    .unwrap_or_else(|e| {
+                        eprintln!("Warning: Failed to load app icon: {}", e);
+                        Default::default()
+                    }),
             ),
         ..Default::default()
     };
