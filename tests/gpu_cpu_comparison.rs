@@ -6,12 +6,18 @@
 //! IMPORTANT: This test requires OpenCL to be available on the system.
 //! It will be skipped if GPU initialization fails.
 
+#[cfg(feature = "gpu")]
 use bip39::Mnemonic;
+#[cfg(feature = "gpu")]
 use bitcoin::bip32::{DerivationPath, Xpriv};
+#[cfg(feature = "gpu")]
 use bitcoin::secp256k1::Secp256k1;
+#[cfg(feature = "gpu")]
 use bitcoin::{Address, Network, PrivateKey};
+#[cfg(feature = "gpu")]
 use std::str::FromStr;
 
+#[cfg(feature = "gpu")]
 #[cfg(test)]
 mod gpu_cpu_tests {
     use super::*;
