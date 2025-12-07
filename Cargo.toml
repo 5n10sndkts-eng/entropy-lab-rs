@@ -52,4 +52,10 @@ egui = { version = "0.29", optional = true }
 [dev-dependencies]
 assert_cmd = "2.0"
 predicates = "3.0"
+criterion = "0.5"
+
+[[bench]]
+name = "gpu_optimization_benchmark"
+harness = false
+required-features = ["gpu"]
 
