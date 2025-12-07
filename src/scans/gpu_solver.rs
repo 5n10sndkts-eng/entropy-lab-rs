@@ -200,7 +200,9 @@ impl GpuSolver {
         // - SHA-256 workspace: 65 uints * 4 bytes = 260 bytes (with padding to avoid bank conflicts)
         // - SHA-512 workspace: 80 ulongs * 8 bytes = 640 bytes
         // - Total: 900 bytes per thread
-        let local_mem_per_thread = 900usize;
+        const SHA256_WORKSPACE_UINTS: usize = 65; // 64 + 1 for bank conflict avoidance
+        const SHA512_WORKSPACE_ULONGS: usize = 80;
+        let local_mem_per_thread = (SHA256_WORKSPACE_UINTS * 4) + (SHA512_WORKSPACE_ULONGS * 8);
         
         // Check if we have enough local memory for the optimized kernel
         // Most GPUs have 32-64 KB of local memory per workgroup
@@ -209,9 +211,15 @@ impl GpuSolver {
         // Limit local work size by both max work group size and local memory
         let optimal_local_size = self.max_work_group_size.min(max_threads_by_mem).min(256);
         
-        if optimal_local_size < 32 {
+        // Minimum work group size for effective optimization
+        // Below this threshold, overhead of local memory setup exceeds benefits
+        // This is based on typical warp/wavefront sizes (32 for NVIDIA, 64 for AMD)
+        const MIN_EFFECTIVE_WORK_GROUP_SIZE: usize = 32;
+        
+        if optimal_local_size < MIN_EFFECTIVE_WORK_GROUP_SIZE {
             // Not enough local memory for optimization, fall back to standard kernel
-            info!("[GPU] Insufficient local memory for optimized kernel, falling back to standard");
+            info!("[GPU] Insufficient local memory for optimized kernel (would be {} < {}), falling back to standard",
+                  optimal_local_size, MIN_EFFECTIVE_WORK_GROUP_SIZE);
             return self.compute_batch(entropies, purpose);
         }
 
@@ -262,10 +270,9 @@ impl GpuSolver {
         let global_work_size = batch_size.div_ceil(optimal_local_size) * optimal_local_size;
         
         // Local memory allocation for SHA-256 and SHA-512 workspaces
-        // SHA-256: 65 uints per thread * optimal_local_size threads
-        let local_sha256_size = 65 * optimal_local_size;
-        // SHA-512: 80 ulongs per thread * optimal_local_size threads  
-        let local_sha512_size = 80 * optimal_local_size;
+        // Must match the constants defined in batch_address_optimized.cl
+        let local_sha256_size = SHA256_WORKSPACE_UINTS * optimal_local_size;
+        let local_sha512_size = SHA512_WORKSPACE_ULONGS * optimal_local_size;
 
         let kernel = self
             .pro_que

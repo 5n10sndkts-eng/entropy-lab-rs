@@ -38,9 +38,12 @@ __kernel void batch_address_local_optimized(
   // SHA-256 needs 64 uints (256 bytes) for working state
   // SHA-512 needs 80 ulongs (640 bytes) for working state
   // OPTIMIZATION: Add padding to avoid bank conflicts on AMD GPUs (32-way banked)
-  // Use (local_id * 65) instead of (local_id * 64) for SHA-256 to avoid conflicts
-  __local uint *my_sha256_workspace = &local_sha256_workspace[local_id * 65];
-  __local ulong *my_sha512_workspace = &local_sha512_workspace[local_id * 80];
+  // Use (local_id * SHA256_LOCAL_SIZE) instead of (local_id * 64) to avoid conflicts
+  #define SHA256_LOCAL_SIZE 65  // 64 + 1 for bank conflict avoidance
+  #define SHA512_LOCAL_SIZE 80  // 80 ulongs for message schedule
+  
+  __local uint *my_sha256_workspace = &local_sha256_workspace[local_id * SHA256_LOCAL_SIZE];
+  __local ulong *my_sha512_workspace = &local_sha512_workspace[local_id * SHA512_LOCAL_SIZE];
 
   // --- Mnemonic Generation (from entropy) ---
   // OPTIMIZATION: Aligned buffers for better memory access
