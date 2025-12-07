@@ -258,19 +258,23 @@ entropy-lab-rs/
 │   ├── main.rs              # CLI interface
 │   ├── gui.rs               # GUI interface (egui)
 │   ├── lib.rs               # Library exports
-│   └── scans/               # Scanner implementations
-│       ├── mod.rs
-│       ├── cake_wallet.rs
-│       ├── trust_wallet.rs
-│       ├── milk_sad.rs
-│       ├── android_securerandom.rs
-│       ├── gpu_solver.rs    # GPU acceleration
-│       └── ...
+│   ├── scans/               # Scanner implementations
+│   │   ├── mod.rs
+│   │   ├── cake_wallet.rs
+│   │   ├── trust_wallet.rs
+│   │   ├── milk_sad.rs
+│   │   ├── android_securerandom.rs
+│   │   ├── gpu_solver.rs    # GPU acceleration
+│   │   └── ...
+│   └── utils/               # Utility modules
 ├── cl/                      # OpenCL kernels
 ├── assets/                  # GUI resources
 ├── tests/                   # Integration tests
-├── Cargo.toml              # Dependencies
-└── README.md               # This file
+├── scripts/                 # Shell and Python utility scripts
+├── standalone/              # Standalone programs (not built with main project)
+├── benches/                 # Performance benchmarks
+├── Cargo.toml               # Dependencies
+└── README.md                # This file
 ```
 
 ## GPU Acceleration
