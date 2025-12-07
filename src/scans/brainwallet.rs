@@ -176,7 +176,7 @@ mod tests {
     fn test_sha256_password() {
         // SHA256("password") verified with: echo -n "password" | shasum -a 256
         let key = derive_key("password", HashType::Sha256 { iterations: 1 });
-        let hex = hex::encode(&key);
+        let hex = hex::encode(key);
         assert_eq!(
             hex,
             "5e884898da28047151d0e56f8dc6292773603d0d6aabbdd62a11ef721d1542d8"

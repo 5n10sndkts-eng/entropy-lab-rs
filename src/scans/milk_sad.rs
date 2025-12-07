@@ -651,9 +651,12 @@ mod tests {
         assert_eq!(UPDATE_13_START_TIMESTAMP, 1514764800); // 2018-01-01 00:00:00 UTC
         assert_eq!(UPDATE_13_END_TIMESTAMP, 1546300799); // 2018-12-31 23:59:59 UTC
 
-        // Verify full range
-        assert!(MILK_SAD_FULL_START < UPDATE_13_START_TIMESTAMP);
-        assert!(UPDATE_13_END_TIMESTAMP < MILK_SAD_FULL_END);
+        // Verify full range (compile-time constant checks for documentation)
+        #[allow(clippy::assertions_on_constants)]
+        {
+            assert!(MILK_SAD_FULL_START < UPDATE_13_START_TIMESTAMP);
+            assert!(UPDATE_13_END_TIMESTAMP < MILK_SAD_FULL_END);
+        }
 
         // Verify one full year
         let year_in_seconds = 365 * 24 * 60 * 60;
