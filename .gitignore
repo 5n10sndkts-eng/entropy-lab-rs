@@ -42,3 +42,7 @@ venv/
 android_securerandom_hits.txt
 hits.txt
 results/
+
+# Terminal recordings and logs with potential sensitive data
+typescript
+typescriptout

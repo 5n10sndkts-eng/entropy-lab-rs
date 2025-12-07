@@ -1,3 +1,0 @@
-Script started on Mon Dec  1 07:52:46 2025
-[1m[7m%[27m[1m[0m                           [0m[27m[24m[Jmoe@moes-MacBook-Air temporal-planetarium % [K[?2004h[?2004l
-[1m[7m%[27m[1m[0m                           [0m[27m[24m[Jmoe@moes-MacBook-Air temporal-planetarium % [K[?2004hssshpass -p [K  "madmad13221" ssh -o Stric [KttHostKeyChecking=no dev@100 [K..115.168.104 "cd ~/entropy- [Kllab-rs && source ~/.cargo/e [Knnv && cargo run --release - [K-- trust-wallet --target 1A1 [KzzP1eP5QGefi2DMPTfTL5SLmv7Di [KvvfNa 2>&1" | tail -20[?2004l
