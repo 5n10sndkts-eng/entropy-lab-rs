@@ -152,39 +152,56 @@ mod tests {
     #[test]
     fn test_optimized_kernel_vs_standard() -> Result<()> {
         println!("\n=== Testing Optimized Kernel vs Standard Kernel ===");
-        
+
         let solver = GpuSolver::new()?;
-        
+
         // Test with a few random entropies
         let test_entropies = vec![
-            [0x01, 0x23, 0x45, 0x67, 0x89, 0xAB, 0xCD, 0xEF, 
-             0xFE, 0xDC, 0xBA, 0x98, 0x76, 0x54, 0x32, 0x10],
-            [0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11,
-             0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22],
-            [0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
-             0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
+            [
+                0x01, 0x23, 0x45, 0x67, 0x89, 0xAB, 0xCD, 0xEF, 0xFE, 0xDC, 0xBA, 0x98, 0x76, 0x54,
+                0x32, 0x10,
+            ],
+            [
+                0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22,
+                0x22, 0x22,
+            ],
+            [
+                0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                0x00, 0x00,
+            ],
         ];
-        
+
         // Test both BIP44 (purpose=44) and Cake Wallet (purpose=0)
         for purpose in [44, 0] {
             println!("\n--- Testing purpose={} ---", purpose);
-            
+
             // Generate addresses with standard kernel
             let standard_results = solver.compute_batch(&test_entropies, purpose)?;
-            println!("Standard kernel: {} addresses generated", standard_results.len());
-            
+            println!(
+                "Standard kernel: {} addresses generated",
+                standard_results.len()
+            );
+
             // Generate addresses with optimized kernel
             let optimized_results = solver.compute_batch_optimized(&test_entropies, purpose)?;
-            println!("Optimized kernel: {} addresses generated", optimized_results.len());
-            
+            println!(
+                "Optimized kernel: {} addresses generated",
+                optimized_results.len()
+            );
+
             // Compare results
             assert_eq!(
                 standard_results.len(),
                 optimized_results.len(),
-                "Kernel result count mismatch for purpose={}", purpose
+                "Kernel result count mismatch for purpose={}",
+                purpose
             );
-            
-            for (i, (std_addr, opt_addr)) in standard_results.iter().zip(optimized_results.iter()).enumerate() {
+
+            for (i, (std_addr, opt_addr)) in standard_results
+                .iter()
+                .zip(optimized_results.iter())
+                .enumerate()
+            {
                 assert_eq!(
                     std_addr, opt_addr,
                     "Address mismatch at index {} for purpose={}: standard={:?} != optimized={:?}",
@@ -192,10 +209,14 @@ mod tests {
                 );
                 println!("  ✓ Address {} matches", i);
             }
-            
-            println!("✓ All {} addresses match for purpose={}", test_entropies.len(), purpose);
+
+            println!(
+                "✓ All {} addresses match for purpose={}",
+                test_entropies.len(),
+                purpose
+            );
         }
-        
+
         println!("\n✓ Optimized kernel produces identical results to standard kernel");
         Ok(())
     }
@@ -203,13 +224,13 @@ mod tests {
     #[test]
     fn test_optimized_kernel_large_batch() -> Result<()> {
         println!("\n=== Testing Optimized Kernel with Large Batch ===");
-        
+
         let solver = GpuSolver::new()?;
-        
+
         // Generate larger batch to test performance and correctness
         let batch_size = 100;
         let mut test_entropies = Vec::new();
-        
+
         for i in 0..batch_size {
             let mut entropy = [0u8; 16];
             // Create semi-random but deterministic entropies
@@ -218,46 +239,49 @@ mod tests {
             }
             test_entropies.push(entropy);
         }
-        
+
         let purpose = 44; // BIP44
-        
+
         println!("Testing with {} entropies...", batch_size);
-        
+
         // Standard kernel
         let start = std::time::Instant::now();
         let standard_results = solver.compute_batch(&test_entropies, purpose)?;
         let standard_duration = start.elapsed();
         println!("Standard kernel: {:?}", standard_duration);
-        
+
         // Optimized kernel
         let start = std::time::Instant::now();
         let optimized_results = solver.compute_batch_optimized(&test_entropies, purpose)?;
         let optimized_duration = start.elapsed();
         println!("Optimized kernel: {:?}", optimized_duration);
-        
+
         // Compare
         assert_eq!(standard_results.len(), batch_size);
         assert_eq!(optimized_results.len(), batch_size);
-        
-        for (i, (std_addr, opt_addr)) in standard_results.iter().zip(optimized_results.iter()).enumerate() {
-            assert_eq!(
-                std_addr, opt_addr,
-                "Address mismatch at index {}", i
-            );
+
+        for (i, (std_addr, opt_addr)) in standard_results
+            .iter()
+            .zip(optimized_results.iter())
+            .enumerate()
+        {
+            assert_eq!(std_addr, opt_addr, "Address mismatch at index {}", i);
         }
-        
+
         println!("✓ All {} addresses match", batch_size);
         println!("Performance comparison:");
         println!("  Standard: {:?}", standard_duration);
         println!("  Optimized: {:?}", optimized_duration);
-        
+
         if optimized_duration < standard_duration {
             let speedup = standard_duration.as_secs_f64() / optimized_duration.as_secs_f64();
             println!("  Speedup: {:.2}x faster", speedup);
         } else {
-            println!("  Note: Optimized kernel may need larger batches to show performance benefit");
+            println!(
+                "  Note: Optimized kernel may need larger batches to show performance benefit"
+            );
         }
-        
+
         Ok(())
     }
 }

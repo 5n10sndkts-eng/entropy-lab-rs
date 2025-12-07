@@ -183,7 +183,7 @@ impl GpuSolver {
     /// Compute addresses using the optimized kernel with local memory
     /// This provides 20-40% performance improvement over the standard batch_address kernel
     /// by using local memory for SHA-256/SHA-512 operations during PBKDF2
-    /// 
+    ///
     /// This method automatically calculates the optimal local work size based on
     /// available local memory and falls back to the standard kernel if insufficient
     pub fn compute_batch_optimized(
@@ -203,19 +203,19 @@ impl GpuSolver {
         const SHA256_WORKSPACE_UINTS: usize = 65; // 64 + 1 for bank conflict avoidance
         const SHA512_WORKSPACE_ULONGS: usize = 80;
         let local_mem_per_thread = (SHA256_WORKSPACE_UINTS * 4) + (SHA512_WORKSPACE_ULONGS * 8);
-        
+
         // Check if we have enough local memory for the optimized kernel
         // Most GPUs have 32-64 KB of local memory per workgroup
         let max_threads_by_mem = (self.local_mem_size as usize) / local_mem_per_thread;
-        
+
         // Limit local work size by both max work group size and local memory
         let optimal_local_size = self.max_work_group_size.min(max_threads_by_mem).min(256);
-        
+
         // Minimum work group size for effective optimization
         // Below this threshold, overhead of local memory setup exceeds benefits
         // This is based on typical warp/wavefront sizes (32 for NVIDIA, 64 for AMD)
         const MIN_EFFECTIVE_WORK_GROUP_SIZE: usize = 32;
-        
+
         if optimal_local_size < MIN_EFFECTIVE_WORK_GROUP_SIZE {
             // Not enough local memory for optimization, fall back to standard kernel
             info!("[GPU] Insufficient local memory for optimized kernel (would be {} < {}), falling back to standard",
@@ -223,7 +223,10 @@ impl GpuSolver {
             return self.compute_batch(entropies, purpose);
         }
 
-        info!("[GPU] Using optimized kernel with local work size: {}", optimal_local_size);
+        info!(
+            "[GPU] Using optimized kernel with local work size: {}",
+            optimal_local_size
+        );
 
         // Split 128-bit entropy into two 64-bit ulongs for OpenCL
         let mut entropies_hi = Vec::with_capacity(batch_size);
@@ -268,7 +271,7 @@ impl GpuSolver {
 
         // Calculate global work size (must be multiple of local work size)
         let global_work_size = batch_size.div_ceil(optimal_local_size) * optimal_local_size;
-        
+
         // Local memory allocation for SHA-256 and SHA-512 workspaces
         // Must match the constants defined in batch_address_optimized.cl
         let local_sha256_size = SHA256_WORKSPACE_UINTS * optimal_local_size;
