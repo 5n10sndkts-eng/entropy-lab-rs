@@ -6,7 +6,9 @@ A research tool for identifying and analyzing cryptocurrency wallet vulnerabilit
 
 Entropy Lab RS is a Rust-based security research tool that scans for various known wallet vulnerabilities by reproducing weak random number generation patterns. This tool is designed for security researchers, white-hat hackers, and blockchain security professionals to identify vulnerable wallets and understand entropy weaknesses.
 
-**NEW**: Now includes a graphical user interface (GUI) for easier interaction and visualization!
+**NEW**: 
+- 🖥️ Graphical user interface (GUI) for easier interaction and visualization
+- 🔥 **Hashcat modules for distributed GPU-accelerated scanning**
 
 ## Features
 
@@ -15,6 +17,7 @@ Entropy Lab RS is a Rust-based security research tool that scans for various kno
 - **🖥️ Graphical User Interface (GUI)**: Interactive desktop application with real-time progress tracking
 - **⌨️ Command-Line Interface (CLI)**: Traditional CLI for scripting and automation
 - **🚀 GPU Acceleration**: Hardware-accelerated scanning for maximum performance
+- **🔥 Hashcat Integration**: Professional-grade hashcat modules for distributed cracking
 - **📊 Real-time Progress**: Live status updates and progress bars
 - **⚙️ Easy Configuration**: User-friendly settings for all scanning options
 
@@ -284,6 +287,26 @@ This project includes extensive GPU acceleration support via OpenCL:
 - **Performance**: 10-100x speedup for supported scanners
 - **Multiple Scanners**: Most vulnerability scanners support GPU acceleration
 - **Device-Aware**: Optimizes work group sizing based on GPU capabilities
+
+### Hashcat Modules 🔥 NEW
+
+Professional hashcat-compatible modules for distributed, GPU-accelerated scanning:
+
+- **m31900**: Cake Wallet 2024 (Weak Electrum Entropy)
+- **m31901**: Trust Wallet 2023 (MT19937 LSB Extraction)
+- **m31902**: Milk Sad / Libbitcoin (Framework ready)
+- **m31903**: Mobile Sensor Entropy (Framework ready)
+- **m31904**: Profanity Vanity Address (Framework ready)
+- **m31905**: Cake Wallet Dart PRNG (Framework ready)
+
+**Features**:
+- Full hashcat integration with optimized OpenCL kernels
+- Support for distributed cracking across multiple GPUs/machines
+- Compatible with hashcat 6.2.6+
+- Comprehensive documentation and test vectors
+- Automated build scripts for easy integration
+
+See [hashcat-modules/](hashcat-modules/) directory for complete documentation and usage examples.
 
 ### Supported Scanners with GPU
 
