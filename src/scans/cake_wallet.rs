@@ -196,7 +196,6 @@ mod tests {
     fn test_base58_address_encoding() {
         // Test that 25-byte binary addresses are correctly encoded to Base58Check format
         // GPU returns 25-byte format: version (1) + hash160 (20) + checksum (4)
-        
         // Example 25-byte binary address (version 0x00 for P2PKH mainnet)
         let binary_addr: [u8; 25] = [
             0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
