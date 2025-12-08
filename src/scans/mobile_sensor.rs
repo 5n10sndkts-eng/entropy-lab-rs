@@ -41,7 +41,8 @@ pub fn run(target: Option<String>) -> Result<()> {
         Err(e) => {
             warn!("[GPU] Failed to initialize GPU solver: {}", e);
             warn!("[GPU] This scanner requires GPU acceleration with mobile_sensor_hash kernel");
-            anyhow::bail!("GPU initialization failed. Try using a GPU with at least 64KB constant memory or use CPU-only mode.");
+            warn!("[GPU] Note: CPU-only fallback is not currently implemented for this scanner");
+            anyhow::bail!("GPU initialization failed. This scanner requires a GPU with OpenCL support.");
         }
     };
     info!("[GPU] Solver initialized");

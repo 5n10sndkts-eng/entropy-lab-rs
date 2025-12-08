@@ -53,7 +53,6 @@ impl KernelProfile {
                 "bip39_wordlist_complete",
                 "cake_hash",
                 "batch_cake_full",
-                "batch_cake_wallet",
             ],
             KernelProfile::Full => vec![
                 "common",
@@ -76,8 +75,8 @@ impl KernelProfile {
                 "batch_address",
                 "batch_address_electrum",
                 "batch_address_optimized",
-                "batch_cake_wallet",
                 "cake_hash",
+                "batch_cake_full",
                 "mobile_sensor_hash",
                 "base58",
                 "address_poisoning",
