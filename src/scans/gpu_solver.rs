@@ -14,8 +14,11 @@ pub enum KernelProfile {
     /// Minimal profile - only basic crypto primitives (sha2, ripemd)
     Minimal,
     /// Mobile sensor profile - includes sha2 but no BIP39 or secp256k1 constants
+    /// Required kernels: mobile_sensor_hash, mobile_sensor_crack
     MobileSensor,
-    /// Cake wallet profile - includes BIP39 constants but reduces secp256k1 precomputation
+    /// Cake wallet profile - includes BIP39 constants and secp256k1 precomputation
+    /// Required kernels: cake_hash, batch_cake_full
+    /// Note: batch_cake_wallet is not included as it's not currently used by any scanner
     CakeWallet,
 }
 
@@ -147,8 +150,9 @@ impl GpuSolver {
             Ok(pq) => pq,
             Err(e) => {
                 let err_str = format!("{}", e);
-                if err_str.contains("constant data") || err_str.contains("0x11798") {
-                    warn!("[GPU] OpenCL build failed due to constant memory limits");
+                // Check for constant memory limit errors (ptxas error with hex byte counts)
+                if err_str.contains("constant data") || err_str.contains("ptxas") {
+                    warn!("[GPU] OpenCL build failed, likely due to constant memory limits");
                     warn!("[GPU] Error: {}", err_str);
                     warn!("[GPU] Try using a more restricted kernel profile");
                     if matches!(profile, KernelProfile::Full) {
