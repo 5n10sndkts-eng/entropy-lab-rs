@@ -3,6 +3,9 @@ use anyhow::Result;
 use tracing::error;
 use tracing::{info, warn};
 
+#[cfg(feature = "gpu")]
+use bs58;
+
 #[cfg(test)]
 use bip39::Mnemonic;
 #[cfg(test)]
@@ -64,7 +67,9 @@ fn run_gpu(solver: crate::scans::gpu_solver::GpuSolver, max_entropy: u32) -> Res
             // Compute Cake Wallet addresses (purpose=0 for m/0'/0/0 + Electrum salt)
             if let Ok(addresses) = solver.compute_batch(&batch, 0) {
                 for addr in addresses.iter() {
-                    info!("ADDRESS: {}", hex::encode(addr));
+                    // Convert 25-byte binary address (version + hash160 + checksum) to Base58Check
+                    let addr_str = bs58::encode(addr).into_string();
+                    info!("ADDRESS: {}", addr_str);
                 }
             }
             batch.clear();
@@ -184,5 +189,33 @@ mod tests {
         // We don't assert the exact address string to avoid fragility if deps change,
         // but we assert it runs without error and produces a valid address.
         assert!(address.to_string().starts_with("bc1q"));
+    }
+
+    #[test]
+    #[cfg(feature = "gpu")]
+    fn test_base58_address_encoding() {
+        // Test that 25-byte binary addresses are correctly encoded to Base58Check format
+        // GPU returns 25-byte format: version (1) + hash160 (20) + checksum (4)
+        // Example 25-byte binary address (version 0x00 for P2PKH mainnet)
+        let binary_addr: [u8; 25] = [
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0xf3, 0xa2, 0x0d, 0xcc
+        ];
+        
+        let addr_str = bs58::encode(&binary_addr).into_string();
+        
+        // Should produce a valid Base58 address starting with "1" (P2PKH mainnet)
+        assert!(addr_str.starts_with("1"), "Address should start with '1'");
+        
+        // Verify it's NOT hex encoded (which would start with "00" and be much longer)
+        assert!(!addr_str.starts_with("00"), "Should not be hex encoded");
+        assert!(addr_str.len() < 40, "Base58 addresses are ~34 chars, hex would be 50");
+        
+        // Verify it only contains valid Base58 characters (excludes 0, O, I, l)
+        let base58_chars = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
+        for c in addr_str.chars() {
+            assert!(base58_chars.contains(c), "Invalid Base58 character: {}", c);
+        }
     }
 }
