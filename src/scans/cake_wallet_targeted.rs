@@ -48,7 +48,14 @@ pub fn run_targeted() -> Result<()> {
 
     #[cfg(feature = "gpu")]
     {
-        let solver = GpuSolver::new()?;
+        let solver = match GpuSolver::new_with_profile(crate::scans::gpu_solver::KernelProfile::CakeWallet) {
+            Ok(s) => s,
+            Err(e) => {
+                warn!("[GPU] Failed to initialize GPU solver: {}", e);
+                warn!("[GPU] This scanner requires GPU acceleration with cake_hash and batch_cake_full kernels");
+                anyhow::bail!("GPU initialization failed. Try using a GPU with at least 64KB constant memory or reduce kernel complexity.");
+            }
+        };
         let network = Network::Bitcoin;
 
         info!("Scanning 1,048,576 possible seeds...");

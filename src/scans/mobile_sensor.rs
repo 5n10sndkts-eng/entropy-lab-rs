@@ -35,8 +35,15 @@ pub fn run(_target: Option<String>) -> Result<()> {
 pub fn run(target: Option<String>) -> Result<()> {
     info!("Mobile Sensor Entropy Vulnerability (GPU-Accelerated)");
 
-    // Initialize GPU
-    let solver = GpuSolver::new()?;
+    // Initialize GPU with MobileSensor profile (reduced constant memory usage)
+    let solver = match GpuSolver::new_with_profile(crate::scans::gpu_solver::KernelProfile::MobileSensor) {
+        Ok(s) => s,
+        Err(e) => {
+            warn!("[GPU] Failed to initialize GPU solver: {}", e);
+            warn!("[GPU] This scanner requires GPU acceleration with mobile_sensor_hash kernel");
+            anyhow::bail!("GPU initialization failed. Try using a GPU with at least 64KB constant memory or use CPU-only mode.");
+        }
+    };
     info!("[GPU] Solver initialized");
 
     if let Some(target_addr) = target {

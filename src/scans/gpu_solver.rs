@@ -1,10 +1,98 @@
 use ocl::{Buffer, MemFlags, ProQue};
-use tracing::{error, info};
+use tracing::{error, info, warn};
 
 // Heuristic multiplier to estimate warp/wavefront size from vector width
 // PreferredVectorWidthInt typically returns 1-4, but warp sizes are 32-64
 // 4 * 8 = 32 (NVIDIA warp), 8 * 8 = 64 (AMD wavefront)
 const VECTOR_WIDTH_TO_WARP_MULTIPLIER: usize = 8;
+
+/// Kernel profile defines which OpenCL files are needed for specific kernels
+#[derive(Debug, Clone, Copy)]
+pub enum KernelProfile {
+    /// Full profile - includes all kernels (may exceed constant memory limits on some GPUs)
+    Full,
+    /// Minimal profile - only basic crypto primitives (sha2, ripemd)
+    Minimal,
+    /// Mobile sensor profile - includes sha2 but no BIP39 or secp256k1 constants
+    MobileSensor,
+    /// Cake wallet profile - includes BIP39 constants but reduces secp256k1 precomputation
+    CakeWallet,
+}
+
+impl KernelProfile {
+    /// Get the list of OpenCL files needed for this profile
+    fn get_files(&self) -> Vec<&'static str> {
+        match self {
+            KernelProfile::Minimal => vec![
+                "common",
+                "ripemd",
+                "sha2",
+                "sha512",
+            ],
+            KernelProfile::MobileSensor => vec![
+                "common",
+                "sha2",
+                "mobile_sensor_hash",
+                "mobile_sensor_crack",
+            ],
+            KernelProfile::CakeWallet => vec![
+                "common",
+                "ripemd",
+                "sha2",
+                "sha512",
+                "secp256k1_common",
+                "secp256k1_scalar",
+                "secp256k1_field",
+                "secp256k1_group",
+                "secp256k1_prec",
+                "secp256k1",
+                "address",
+                "mnemonic_constants",
+                "dart_prng",
+                "bip39_helpers",
+                "bip39_wordlist_complete",
+                "cake_hash",
+                "batch_cake_full",
+                "batch_cake_wallet",
+            ],
+            KernelProfile::Full => vec![
+                "common",
+                "ripemd",
+                "sha2",
+                "sha512",
+                "secp256k1_common",
+                "secp256k1_scalar",
+                "secp256k1_field",
+                "secp256k1_group",
+                "secp256k1_prec",
+                "secp256k1",
+                "address",
+                "mnemonic_constants",
+                "mt19937",
+                "dart_prng",
+                "bip39_helpers",
+                "bip39_wordlist_complete",
+                "bip39_full",
+                "batch_address",
+                "batch_address_electrum",
+                "batch_address_optimized",
+                "batch_cake_wallet",
+                "cake_hash",
+                "mobile_sensor_hash",
+                "base58",
+                "address_poisoning",
+                "mobile_sensor_crack",
+                "keccak256",
+                "mt19937_64",
+                "batch_profanity",
+                "trust_wallet_crack",
+                "milk_sad_crack",
+                "test_mt19937",
+                "milk_sad_crack_multi30",
+            ],
+        }
+    }
+}
 
 pub struct GpuSolver {
     pro_que: ProQue,
@@ -15,48 +103,22 @@ pub struct GpuSolver {
     max_compute_units: u32,
     #[allow(dead_code)]
     local_mem_size: u64,
+    #[allow(dead_code)]
+    profile: KernelProfile,
 }
 
 impl GpuSolver {
+    /// Create a new GPU solver with the default Full profile
     pub fn new() -> ocl::Result<Self> {
-        info!("[GPU] Initializing GPU solver...");
-        let _src = include_str!("../../cl/batch_address.cl");
+        Self::new_with_profile(KernelProfile::Full)
+    }
 
-        let files = [
-            "common",
-            "ripemd",
-            "sha2",
-            "sha512",
-            "secp256k1_common",
-            "secp256k1_scalar",
-            "secp256k1_field",
-            "secp256k1_group",
-            "secp256k1_prec",
-            "secp256k1",
-            "address",
-            "mnemonic_constants",
-            "mt19937",
-            "dart_prng",
-            "bip39_helpers",
-            "bip39_wordlist_complete",
-            "bip39_full",
-            "batch_address",
-            "batch_address_electrum",
-            "batch_address_optimized",
-            "batch_cake_wallet",
-            "cake_hash",
-            "mobile_sensor_hash",
-            "base58",
-            "address_poisoning",
-            "mobile_sensor_crack",
-            "keccak256",
-            "mt19937_64",
-            "batch_profanity",
-            "trust_wallet_crack",
-            "milk_sad_crack",
-            "test_mt19937",
-            "milk_sad_crack_multi30",
-        ];
+    /// Create a new GPU solver with a specific kernel profile
+    /// This allows reducing constant memory usage for GPUs with limited constant memory
+    pub fn new_with_profile(profile: KernelProfile) -> ocl::Result<Self> {
+        info!("[GPU] Initializing GPU solver with profile: {:?}...", profile);
+
+        let files = profile.get_files();
 
         info!("[GPU] Loading {} kernel files...", files.len());
         let mut raw_cl_file = String::new();
@@ -82,7 +144,21 @@ impl GpuSolver {
             "-w -cl-fast-relaxed-math -cl-mad-enable -cl-no-signed-zeros -cl-unsafe-math-optimizations"
         );
 
-        let pro_que = ProQue::builder().prog_bldr(prog_bldr).dims(1).build()?;
+        let pro_que = match ProQue::builder().prog_bldr(prog_bldr).dims(1).build() {
+            Ok(pq) => pq,
+            Err(e) => {
+                let err_str = format!("{}", e);
+                if err_str.contains("constant data") || err_str.contains("0x11798") {
+                    warn!("[GPU] OpenCL build failed due to constant memory limits");
+                    warn!("[GPU] Error: {}", err_str);
+                    warn!("[GPU] Try using a more restricted kernel profile");
+                    if matches!(profile, KernelProfile::Full) {
+                        warn!("[GPU] Hint: Use KernelProfile::CakeWallet or KernelProfile::MobileSensor");
+                    }
+                }
+                return Err(e);
+            }
+        };
 
         let device = pro_que.device();
 
@@ -108,7 +184,7 @@ impl GpuSolver {
                 32 // Safe default
             };
 
-        info!("[GPU] ✓ GPU solver initialized successfully");
+        info!("[GPU] ✓ GPU solver initialized successfully with profile: {:?}", profile);
         info!("[GPU] Device: {:?}", device.name()?);
         info!("[GPU] Max work group size: {}", max_work_group_size);
         info!(
@@ -125,6 +201,7 @@ impl GpuSolver {
             preferred_work_group_multiple,
             max_compute_units,
             local_mem_size,
+            profile,
         })
     }
 
