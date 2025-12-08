@@ -5,7 +5,7 @@ use std::process::Command;
 #[test]
 fn test_cli_help() {
     // This test ensures the binary compiles and runs, and prints help
-    let mut cmd = Command::cargo_bin("entropy-lab-rs").unwrap();
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("entropy-lab-rs"));
     cmd.arg("--help");
     cmd.assert().success().stdout(predicate::str::contains(
         "Research tool for wallet vulnerabilities",
@@ -15,7 +15,7 @@ fn test_cli_help() {
 #[test]
 fn test_cli_no_args() {
     // Running without args should fail (clap requires subcommand) or print help
-    let mut cmd = Command::cargo_bin("entropy-lab-rs").unwrap();
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("entropy-lab-rs"));
     cmd.assert()
         .failure()
         .stderr(predicate::str::contains("Usage: entropy-lab-rs <COMMAND>"));

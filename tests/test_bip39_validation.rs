@@ -40,7 +40,7 @@ fn generate_address_from_entropy(entropy: &[u8; 16]) -> String {
     // Bitcoin v0.32: private_key is SecretKey, need to wrap in PrivateKey
     let private_key = bitcoin::PrivateKey::new(derived.private_key, Network::Bitcoin);
     let pubkey = private_key.public_key(&secp);
-    let address = Address::p2pkh(&pubkey, Network::Bitcoin);
+    let address = Address::p2pkh(pubkey, Network::Bitcoin);
 
     address.to_string()
 }
@@ -60,7 +60,7 @@ fn test_milk_sad_entropy_generation() {
     for (timestamp, description) in test_cases {
         let entropy = generate_milk_sad_entropy(timestamp);
         println!("Timestamp: {} ({})", timestamp, description);
-        println!("  Entropy (128-bit): {}", hex::encode(&entropy));
+        println!("  Entropy (128-bit): {}", hex::encode(entropy));
 
         // Generate mnemonic to verify it's valid
         let mnemonic = Mnemonic::from_entropy(&entropy).unwrap();
@@ -89,7 +89,7 @@ fn test_bip39_cpu_reference_addresses() {
         let address = generate_address_from_entropy(&entropy);
 
         println!("Timestamp: {}", timestamp);
-        println!("  Entropy: {}", hex::encode(&entropy));
+        println!("  Entropy: {}", hex::encode(entropy));
         println!("  Address: {}", address);
         println!();
     }

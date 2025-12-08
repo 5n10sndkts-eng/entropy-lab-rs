@@ -29,7 +29,7 @@ fn test_mt19937_reference_vectors() {
         }
 
         println!("Timestamp: {} ({})", seed, description);
-        println!("  Entropy: {}", hex::encode(&entropy));
+        println!("  Entropy: {}", hex::encode(entropy));
     }
 
     println!("\nThese values should match GPU test_mt19937 kernel output");

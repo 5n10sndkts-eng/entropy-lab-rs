@@ -39,6 +39,7 @@ fn generate_cake_wallet_cpu_address(seed_index: u32) -> (String, String, [u8; 16
 }
 
 /// Extract Hash160 from P2PKH address for GPU comparison
+#[allow(dead_code)]
 fn extract_hash160_from_legacy(address: &str) -> Option<[u8; 20]> {
     let addr = bitcoin::Address::from_str(address).ok()?.assume_checked();
     let script = addr.script_pubkey();
@@ -64,7 +65,7 @@ fn test_cake_wallet_cpu_addresses() {
         let (segwit, legacy, entropy) = generate_cake_wallet_cpu_address(idx);
 
         println!("Seed Index: {} (0x{:08X})", idx, idx);
-        println!("  Entropy: {}", hex::encode(&entropy));
+        println!("  Entropy: {}", hex::encode(entropy));
         println!("  Legacy:  {}", legacy);
         println!("  SegWit:  {}", segwit);
         println!();

@@ -14,9 +14,9 @@ fn generate_trust_wallet_entropy(timestamp: u32) -> [u8; 16] {
     let mut rng = Mt19937GenRand32::new(timestamp);
     let mut entropy = [0u8; 16];
     // LSB extraction: take only lower 8 bits from each of 16 words
-    for i in 0..16 {
+    for item in entropy.iter_mut().take(16) {
         let val = rng.next_u32();
-        entropy[i] = (val & 0xFF) as u8; // LSB only!
+        *item = (val & 0xFF) as u8; // LSB only!
     }
     entropy
 }
@@ -33,7 +33,7 @@ fn generate_address_from_entropy(entropy: &[u8; 16]) -> String {
 
     let private_key = bitcoin::PrivateKey::new(derived.private_key, Network::Bitcoin);
     let pubkey = private_key.public_key(&secp);
-    Address::p2pkh(&pubkey, Network::Bitcoin).to_string()
+    Address::p2pkh(pubkey, Network::Bitcoin).to_string()
 }
 
 #[test]
@@ -53,7 +53,7 @@ fn test_trust_wallet_timestamp_vectors() {
         let address = generate_address_from_entropy(&entropy);
 
         println!("Timestamp: {}", ts);
-        println!("  Entropy: {}", hex::encode(&entropy));
+        println!("  Entropy: {}", hex::encode(entropy));
         println!("  Mnemonic: {}...", &mnemonic.to_string()[..40]);
         println!("  Address: {}", address);
         println!();
