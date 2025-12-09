@@ -48,12 +48,20 @@ pub fn run_targeted() -> Result<()> {
 
     #[cfg(feature = "gpu")]
     {
-        let solver = match GpuSolver::new_with_profile(crate::scans::gpu_solver::KernelProfile::CakeWallet) {
+        use crate::scans::gpu_solver::KernelProfile;
+        
+        // Use split profiles to avoid constant memory limits
+        // CakeWalletHashOnly: for cake_hash kernel (no secp256k1)
+        // CakeWalletFull: for batch_cake_full kernel (with secp256k1)
+        let solver = match GpuSolver::new_with_split_profiles(&[
+            KernelProfile::CakeWalletHashOnly,
+            KernelProfile::CakeWalletFull,
+        ]) {
             Ok(s) => s,
             Err(e) => {
-                warn!("[GPU] Failed to initialize GPU solver: {}", e);
+                warn!("[GPU] Failed to initialize GPU solver with split profiles: {}", e);
                 warn!("[GPU] This scanner requires GPU acceleration with cake_hash and batch_cake_full kernels");
-                anyhow::bail!("GPU initialization failed. Try using a GPU with at least 64KB constant memory or reduce kernel complexity.");
+                anyhow::bail!("GPU initialization failed. Split profiles are required to stay within constant memory limits.");
             }
         };
         let network = Network::Bitcoin;
