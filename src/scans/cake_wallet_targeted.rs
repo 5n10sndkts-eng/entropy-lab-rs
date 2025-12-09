@@ -48,12 +48,21 @@ pub fn run_targeted() -> Result<()> {
 
     #[cfg(feature = "gpu")]
     {
+        // Note: CakeWallet profile includes both cake_hash and batch_cake_full kernels.
+        // Large lookup tables (BIP39 wordlist, secp256k1 precomputation) have been moved
+        // from constant memory to global memory to avoid the 64KB constant memory limit.
+        // The kernels should now compile on all standard GPUs, but very large kernel sizes
+        // may still occasionally cause issues on some older or resource-constrained GPUs
+        // due to factors like register pressure or compilation timeouts.
+        #[allow(deprecated)]
         let solver = match GpuSolver::new_with_profile(crate::scans::gpu_solver::KernelProfile::CakeWallet) {
             Ok(s) => s,
             Err(e) => {
                 warn!("[GPU] Failed to initialize GPU solver: {}", e);
                 warn!("[GPU] This scanner requires GPU acceleration with cake_hash and batch_cake_full kernels");
-                anyhow::bail!("GPU initialization failed. Try using a GPU with at least 64KB constant memory or reduce kernel complexity.");
+                warn!("[GPU] The large precomputation tables have been moved from constant to global memory");
+                warn!("[GPU] but kernel compilation may still fail on older or resource-constrained GPUs");
+                anyhow::bail!("GPU initialization failed. The kernel may not be compatible with your GPU.");
             }
         };
         let network = Network::Bitcoin;

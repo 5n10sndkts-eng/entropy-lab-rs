@@ -16,9 +16,19 @@ pub enum KernelProfile {
     /// Mobile sensor profile - includes sha2 but no BIP39 or secp256k1 constants
     /// Required kernels: mobile_sensor_hash, mobile_sensor_crack
     MobileSensor,
-    /// Cake wallet profile - includes BIP39 constants and secp256k1 precomputation
-    /// Required kernels: cake_hash, batch_cake_full
-    /// Note: batch_cake_wallet is not included as it's not currently used by any scanner
+    /// Cake wallet hash profile - ONLY includes cake_hash kernel (no secp256k1)
+    /// Required kernels: cake_hash
+    /// Memory usage: Large wordlist tables now in global memory (not constant memory)
+    CakeWalletHash,
+    /// Cake wallet full profile - ONLY includes batch_cake_full kernel (with secp256k1)
+    /// Required kernels: batch_cake_full
+    /// Source size: ~280KB, but lookup tables are in global memory (not constant memory)
+    /// This profile should work on all GPUs with standard 64KB constant memory limit
+    CakeWalletFull,
+    /// Legacy: Cake wallet profile - includes both cake_hash and batch_cake_full
+    /// DEPRECATED: Use CakeWalletHash and CakeWalletFull separately
+    /// Note: Large lookup tables have been moved to global memory to fix constant memory issues
+    #[deprecated(note = "Use CakeWalletHash and CakeWalletFull separately instead")]
     CakeWallet,
 }
 
@@ -38,6 +48,34 @@ impl KernelProfile {
                 "mobile_sensor_hash",
                 "mobile_sensor_crack",
             ],
+            KernelProfile::CakeWalletHash => vec![
+                "common",
+                "sha2",
+                "mnemonic_constants",
+                "dart_prng",
+                "bip39_helpers",
+                "bip39_wordlist_complete",
+                "cake_hash",
+            ],
+            KernelProfile::CakeWalletFull => vec![
+                "common",
+                "ripemd",
+                "sha2",
+                "sha512",
+                "secp256k1_common",
+                "secp256k1_scalar",
+                "secp256k1_field",
+                "secp256k1_group",
+                "secp256k1_prec",
+                "secp256k1",
+                "address",
+                "mnemonic_constants",
+                "dart_prng",
+                "bip39_helpers",
+                "bip39_wordlist_complete",
+                "batch_cake_full",
+            ],
+            #[allow(deprecated)]
             KernelProfile::CakeWallet => vec![
                 "common",
                 "ripemd",
