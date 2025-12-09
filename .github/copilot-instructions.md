@@ -4,6 +4,40 @@
 
 Entropy Lab RS is a Rust-based security research tool designed to identify and analyze cryptocurrency wallet vulnerabilities related to weak entropy generation. This tool is intended for security researchers, white-hat hackers, and blockchain security professionals.
 
+## Working with GitHub Copilot Coding Agent
+
+This repository is configured to work with GitHub Copilot coding agent. When creating issues or providing feedback:
+
+### Good Tasks for Copilot
+- ✅ Bug fixes with clear reproduction steps
+- ✅ Adding new scanner implementations following existing patterns
+- ✅ Writing or expanding unit/integration tests
+- ✅ Documentation updates (code comments, README, guides)
+- ✅ Refactoring code to improve clarity or performance
+- ✅ Adding new CLI commands or options
+- ✅ Implementing new GPU kernels based on specifications
+
+### Tasks Requiring Human Expertise
+- ❌ Major architectural changes or redesigns
+- ❌ Security vulnerability fixes in cryptographic code (requires expert review)
+- ❌ Changes to core wallet derivation logic (high risk of fund loss)
+- ❌ Decisions about new vulnerability research directions
+- ❌ Complex multi-repository coordination
+
+### Creating Issues for Copilot
+When writing issues, be specific and include:
+- **Clear description** of what needs to be done
+- **Acceptance criteria** (e.g., "must pass all existing tests")
+- **Files/modules** that likely need changes
+- **Example code** or test cases where helpful
+- **Security implications** if applicable
+
+### Providing Feedback on Copilot PRs
+- Review PRs as you would a teammate's work
+- Use `@copilot` in comments to request changes or clarification
+- Run tests and linters before approving
+- For security-sensitive changes, request human expert review
+
 ## Project Structure
 
 ```
