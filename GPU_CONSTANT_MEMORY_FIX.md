@@ -8,7 +8,7 @@ ptxas error: File uses too much global constant data (0x11798 bytes, 0x10000 max
 ```
 
 This error occurs when the combined OpenCL kernel exceeds the GPU's constant memory limit:
-- **Required**: ~71KB (0x11798 bytes)
+- **Required**: ~71KB (0x11798 bytes) of constant memory
 - **Maximum**: 64KB (0x10000 bytes = 65536 bytes)
 
 ### Affected Scanners
@@ -18,41 +18,62 @@ This error occurs when the combined OpenCL kernel exceeds the GPU's constant mem
 
 ### Root Cause
 
-The original implementation loaded all OpenCL kernels into a single program, including:
-- `secp256k1_prec.cl`: 109KB (precomputation tables for elliptic curve operations)
-- `bip39_wordlist_complete.cl`: 45KB (complete BIP39 wordlist)
-- `mnemonic_constants.cl`: 23KB (word lengths and other constants)
+The large lookup tables were declared with `__constant` qualifier in OpenCL:
+- `secp256k1_prec.cl`: 109KB source file (precomputation tables for elliptic curve operations)
+- `bip39_wordlist_complete.cl`: 45KB source file (complete BIP39 wordlist)
+- `mnemonic_constants.cl`: 23KB source file (word lengths and other constants)
 
-Many GPUs have a 64KB constant memory limit, which was exceeded by the combined kernel size.
+When these were compiled with `__constant`, they consumed GPU constant memory which is typically limited to 64KB on consumer GPUs.
 
-## Solution
+## Solution (Latest)
 
-Implemented a **kernel profile system** that allows loading only the required OpenCL files for each scanner, reducing constant memory usage.
+### Moving Data from Constant to Global Memory
 
-### Kernel Profiles
+The primary fix is to **remove `__constant` declarations** from the large lookup tables, allowing them to reside in global memory instead of constant memory:
 
-Four profiles are now available:
+1. **Modified `cl/mnemonic_constants.cl`**:
+   - Changed `__constant char words[2048][9]` → `__attribute__((aligned(4))) char words[2048][9]`
+   - Changed `__constant unsigned char word_lengths[2048]` → `__attribute__((aligned(4))) unsigned char word_lengths[2048]`
+
+2. **Modified `cl/secp256k1_prec.cl`**:
+   - Changed `__constant secp256k1_ge_storage prec[128][4]` → `__attribute__((aligned(16))) secp256k1_ge_storage prec[128][4]`
+
+### Impact
+
+- **Constant Memory**: Reduced from 71KB to well under 64KB limit
+- **Global Memory**: Increased usage by ~177KB for the lookup tables
+- **Performance**: Minimal impact as these are infrequently accessed lookup tables
+- **Compatibility**: Should now work on all GPUs with standard 64KB constant memory limit
+
+### Kernel Profiles (Supporting Feature)
+
+Six profiles are available for different use cases:
 
 1. **Full** (default)
    - Includes all kernels
-   - May exceed constant memory limits on some GPUs
-   - Use for high-end GPUs with >64KB constant memory
-
+   - Now works on standard GPUs after constant memory fix
+   
 2. **Minimal**
    - Basic crypto primitives only (sha2, ripemd, sha512)
    - Smallest memory footprint
-   - Use for testing or minimal operations
-
+   
 3. **MobileSensor**
    - Includes: sha2, mobile_sensor_hash, mobile_sensor_crack
    - Does not include: BIP39 constants, secp256k1 precomputation
-   - Memory usage: ~15KB
-   - Use for: Mobile sensor vulnerability scanning
-
-4. **CakeWallet**
-   - Includes: sha2, sha512, secp256k1, BIP39 wordlist, cake_hash, batch_cake_full
-   - Memory usage: ~65KB (just under the 64KB limit)
-   - Use for: Cake Wallet vulnerability scanning
+   - Memory usage: ~15KB constant memory
+   
+4. **CakeWalletHash**
+   - Includes: sha2, mnemonic_constants, BIP39 wordlist, cake_hash
+   - Does NOT include: secp256k1 precomputation (batch_cake_full)
+   - Use for: Hash-only operations in Cake Wallet scanning
+   
+5. **CakeWalletFull**
+   - Includes: All of CakeWallet plus secp256k1 for batch_cake_full
+   - Use for: Full address derivation in Cake Wallet scanning
+   
+6. **CakeWallet** (deprecated)
+   - Legacy profile that includes both cake_hash and batch_cake_full
+   - Use CakeWalletHash and CakeWalletFull separately for better control
 
 ### Code Changes
 
