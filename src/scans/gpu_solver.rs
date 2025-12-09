@@ -165,6 +165,125 @@ impl KernelProfile {
             KernelProfile::MobileSensorFull => "MobileSensorFull",
         }
     }
+            ],
+            KernelProfile::MobileSensor => vec![
+                "common",
+                "sha2",
+                "mobile_sensor_hash",
+                "mobile_sensor_crack",
+            ],
+            KernelProfile::CakeWallet => vec![
+                "common",
+                "ripemd",
+                "sha2",
+                "sha512",
+                "secp256k1_common",
+                "secp256k1_scalar",
+                "secp256k1_field",
+                "secp256k1_group",
+                "secp256k1_prec",
+                "secp256k1",
+                "address",
+                "mnemonic_constants",
+                "dart_prng",
+                "bip39_helpers",
+                "bip39_wordlist_complete",
+                "cake_hash",
+                "batch_cake_full",
+            ],
+            KernelProfile::CakeWalletHashOnly => vec![
+                "common",
+                "sha2",
+                "dart_prng",
+                "mnemonic_constants",
+                "bip39_wordlist_complete",
+                "cake_hash",
+            ],
+            KernelProfile::CakeWalletFull => vec![
+                "common",
+                "ripemd",
+                "sha2",
+                "sha512",
+                "secp256k1_common",
+                "secp256k1_scalar",
+                "secp256k1_field",
+                "secp256k1_group",
+                "secp256k1_prec",
+                "secp256k1",
+                "address",
+                "mnemonic_constants",
+                "dart_prng",
+                "bip39_helpers",
+                "bip39_wordlist_complete",
+                "batch_cake_full",
+            ],
+            KernelProfile::MobileSensorHashOnly => vec![
+                "common",
+                "sha2",
+                "mobile_sensor_hash",
+            ],
+            KernelProfile::MobileSensorFull => vec![
+                "common",
+                "ripemd",
+                "sha2",
+                "secp256k1_common",
+                "secp256k1_scalar",
+                "secp256k1_field",
+                "secp256k1_group",
+                "secp256k1_prec",
+                "secp256k1",
+                "address",
+                "mobile_sensor_crack",
+            ],
+            KernelProfile::Full => vec![
+                "common",
+                "ripemd",
+                "sha2",
+                "sha512",
+                "secp256k1_common",
+                "secp256k1_scalar",
+                "secp256k1_field",
+                "secp256k1_group",
+                "secp256k1_prec",
+                "secp256k1",
+                "address",
+                "mnemonic_constants",
+                "mt19937",
+                "dart_prng",
+                "bip39_helpers",
+                "bip39_wordlist_complete",
+                "bip39_full",
+                "batch_address",
+                "batch_address_electrum",
+                "batch_address_optimized",
+                "cake_hash",
+                "batch_cake_full",
+                "mobile_sensor_hash",
+                "base58",
+                "address_poisoning",
+                "mobile_sensor_crack",
+                "keccak256",
+                "mt19937_64",
+                "batch_profanity",
+                "trust_wallet_crack",
+                "milk_sad_crack",
+                "test_mt19937",
+                "milk_sad_crack_multi30",
+            ],
+        }
+    }
+    
+    /// Get the profile name for kernel-to-profile mapping
+    /// Returns the profile that should contain this kernel, if any
+    pub fn for_kernel(kernel_name: &str) -> Option<&'static str> {
+        match kernel_name {
+            "cake_hash" => Some("CakeWalletHashOnly"),
+            "batch_cake_full" => Some("CakeWalletFull"),
+            "mobile_sensor_hash" => Some("MobileSensorHashOnly"),
+            "mobile_sensor_crack" => Some("MobileSensorFull"),
+            _ => None,
+        }
+    }
 }
 
 pub struct GpuSolver {
@@ -342,18 +461,16 @@ impl GpuSolver {
     /// Get the ProQue for a specific kernel
     /// If the kernel requires a separate program, it returns that, otherwise the default
     fn get_pro_que_for_kernel(&self, kernel_name: &str) -> &ProQue {
-        // Map kernel names to profile names
-        let profile_name = match kernel_name {
-            "cake_hash" => Some("CakeWalletHashOnly"),
-            "batch_cake_full" => Some("CakeWalletFull"),
-            "mobile_sensor_hash" => Some("MobileSensorHashOnly"),
-            "mobile_sensor_crack" => Some("MobileSensorFull"),
-            _ => None,
-        };
-
-        if let Some(name) = profile_name {
-            if let Some(pro_que) = self.programs.get(name) {
+        // Use centralized kernel-to-profile mapping
+        if let Some(profile_name) = KernelProfile::for_kernel(kernel_name) {
+            if let Some(pro_que) = self.programs.get(profile_name) {
                 return pro_que;
+            } else {
+                // Warn if expected profile is not loaded (possible configuration error)
+                warn!(
+                    "[GPU] Kernel '{}' expects profile '{}', but profile not loaded. Falling back to default program.",
+                    kernel_name, profile_name
+                );
             }
         }
 
