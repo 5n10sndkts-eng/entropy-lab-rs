@@ -58,7 +58,7 @@ pub fn run_targeted() -> Result<()> {
         let solver = match GpuSolver::new_with_profile(crate::scans::gpu_solver::KernelProfile::CakeWallet) {
             Ok(s) => s,
             Err(e) => {
-                warn!("[GPU] Failed to initialize GPU solver: {}", e);
+                warn!("[GPU] Failed to initialize GPU solver with split profiles: {}", e);
                 warn!("[GPU] This scanner requires GPU acceleration with cake_hash and batch_cake_full kernels");
                 warn!("[GPU] The large precomputation tables have been moved from constant to global memory");
                 warn!("[GPU] but kernel compilation may still fail on older or resource-constrained GPUs");

@@ -35,14 +35,21 @@ pub fn run(_target: Option<String>) -> Result<()> {
 pub fn run(target: Option<String>) -> Result<()> {
     info!("Mobile Sensor Entropy Vulnerability (GPU-Accelerated)");
 
-    // Initialize GPU with MobileSensor profile (reduced constant memory usage)
-    let solver = match GpuSolver::new_with_profile(crate::scans::gpu_solver::KernelProfile::MobileSensor) {
+    use crate::scans::gpu_solver::KernelProfile;
+    
+    // Use split profiles to avoid constant memory limits
+    // MobileSensorHashOnly: for mobile_sensor_hash kernel (no secp256k1)
+    // MobileSensorFull: for mobile_sensor_crack kernel (with secp256k1)
+    let solver = match GpuSolver::new_with_split_profiles(&[
+        KernelProfile::MobileSensorHashOnly,
+        KernelProfile::MobileSensorFull,
+    ]) {
         Ok(s) => s,
         Err(e) => {
-            warn!("[GPU] Failed to initialize GPU solver: {}", e);
+            warn!("[GPU] Failed to initialize GPU solver with split profiles: {}", e);
             warn!("[GPU] This scanner requires GPU acceleration with mobile_sensor_hash and mobile_sensor_crack kernels");
             warn!("[GPU] Note: CPU-only fallback is not currently implemented for this scanner");
-            anyhow::bail!("GPU initialization failed. This scanner requires a GPU with OpenCL support.");
+            anyhow::bail!("GPU initialization failed. Split profiles are required to stay within constant memory limits.");
         }
     };
     info!("[GPU] Solver initialized");

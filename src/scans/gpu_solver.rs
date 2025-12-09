@@ -1,5 +1,6 @@
-use ocl::{Buffer, MemFlags, ProQue};
+use ocl::{Buffer, MemFlags, ProQue, Context, Device};
 use tracing::{error, info, warn};
+use std::collections::HashMap;
 
 // Heuristic multiplier to estimate warp/wavefront size from vector width
 // PreferredVectorWidthInt typically returns 1-4, but warp sizes are 32-64
@@ -30,6 +31,18 @@ pub enum KernelProfile {
     /// Note: Large lookup tables have been moved to global memory to fix constant memory issues
     #[deprecated(note = "Use CakeWalletHash and CakeWalletFull separately instead")]
     CakeWallet,
+    /// Cake wallet split - hash-only kernels (no secp256k1, lighter memory footprint)
+    /// Required kernels: cake_hash
+    CakeWalletHashOnly,
+    /// Cake wallet split - full derivation (includes secp256k1)
+    /// Required kernels: batch_cake_full
+    CakeWalletFull,
+    /// Mobile sensor split - hash-only kernels (no secp256k1)
+    /// Required kernels: mobile_sensor_hash
+    MobileSensorHashOnly,
+    /// Mobile sensor split - full derivation (includes secp256k1)
+    /// Required kernels: mobile_sensor_crack
+    MobileSensorFull,
 }
 
 impl KernelProfile {
@@ -95,6 +108,50 @@ impl KernelProfile {
                 "cake_hash",
                 "batch_cake_full",
             ],
+            KernelProfile::CakeWalletHashOnly => vec![
+                "common",
+                "sha2",
+                "dart_prng",
+                "mnemonic_constants",
+                "bip39_wordlist_complete",
+                "cake_hash",
+            ],
+            KernelProfile::CakeWalletFull => vec![
+                "common",
+                "ripemd",
+                "sha2",
+                "sha512",
+                "secp256k1_common",
+                "secp256k1_scalar",
+                "secp256k1_field",
+                "secp256k1_group",
+                "secp256k1_prec",
+                "secp256k1",
+                "address",
+                "mnemonic_constants",
+                "dart_prng",
+                "bip39_helpers",
+                "bip39_wordlist_complete",
+                "batch_cake_full",
+            ],
+            KernelProfile::MobileSensorHashOnly => vec![
+                "common",
+                "sha2",
+                "mobile_sensor_hash",
+            ],
+            KernelProfile::MobileSensorFull => vec![
+                "common",
+                "ripemd",
+                "sha2",
+                "secp256k1_common",
+                "secp256k1_scalar",
+                "secp256k1_field",
+                "secp256k1_group",
+                "secp256k1_prec",
+                "secp256k1",
+                "address",
+                "mobile_sensor_crack",
+            ],
             KernelProfile::Full => vec![
                 "common",
                 "ripemd",
@@ -132,10 +189,146 @@ impl KernelProfile {
             ],
         }
     }
+    
+    /// Get the profile name for use as a key in the programs HashMap
+    fn profile_name(&self) -> &'static str {
+        match self {
+            KernelProfile::Full => "Full",
+            KernelProfile::Minimal => "Minimal",
+            KernelProfile::MobileSensor => "MobileSensor",
+            KernelProfile::CakeWallet => "CakeWallet",
+            KernelProfile::CakeWalletHashOnly => "CakeWalletHashOnly",
+            KernelProfile::CakeWalletFull => "CakeWalletFull",
+            KernelProfile::MobileSensorHashOnly => "MobileSensorHashOnly",
+            KernelProfile::MobileSensorFull => "MobileSensorFull",
+        }
+    }
+            ],
+            KernelProfile::MobileSensor => vec![
+                "common",
+                "sha2",
+                "mobile_sensor_hash",
+                "mobile_sensor_crack",
+            ],
+            KernelProfile::CakeWallet => vec![
+                "common",
+                "ripemd",
+                "sha2",
+                "sha512",
+                "secp256k1_common",
+                "secp256k1_scalar",
+                "secp256k1_field",
+                "secp256k1_group",
+                "secp256k1_prec",
+                "secp256k1",
+                "address",
+                "mnemonic_constants",
+                "dart_prng",
+                "bip39_helpers",
+                "bip39_wordlist_complete",
+                "cake_hash",
+                "batch_cake_full",
+            ],
+            KernelProfile::CakeWalletHashOnly => vec![
+                "common",
+                "sha2",
+                "dart_prng",
+                "mnemonic_constants",
+                "bip39_wordlist_complete",
+                "cake_hash",
+            ],
+            KernelProfile::CakeWalletFull => vec![
+                "common",
+                "ripemd",
+                "sha2",
+                "sha512",
+                "secp256k1_common",
+                "secp256k1_scalar",
+                "secp256k1_field",
+                "secp256k1_group",
+                "secp256k1_prec",
+                "secp256k1",
+                "address",
+                "mnemonic_constants",
+                "dart_prng",
+                "bip39_helpers",
+                "bip39_wordlist_complete",
+                "batch_cake_full",
+            ],
+            KernelProfile::MobileSensorHashOnly => vec![
+                "common",
+                "sha2",
+                "mobile_sensor_hash",
+            ],
+            KernelProfile::MobileSensorFull => vec![
+                "common",
+                "ripemd",
+                "sha2",
+                "secp256k1_common",
+                "secp256k1_scalar",
+                "secp256k1_field",
+                "secp256k1_group",
+                "secp256k1_prec",
+                "secp256k1",
+                "address",
+                "mobile_sensor_crack",
+            ],
+            KernelProfile::Full => vec![
+                "common",
+                "ripemd",
+                "sha2",
+                "sha512",
+                "secp256k1_common",
+                "secp256k1_scalar",
+                "secp256k1_field",
+                "secp256k1_group",
+                "secp256k1_prec",
+                "secp256k1",
+                "address",
+                "mnemonic_constants",
+                "mt19937",
+                "dart_prng",
+                "bip39_helpers",
+                "bip39_wordlist_complete",
+                "bip39_full",
+                "batch_address",
+                "batch_address_electrum",
+                "batch_address_optimized",
+                "cake_hash",
+                "batch_cake_full",
+                "mobile_sensor_hash",
+                "base58",
+                "address_poisoning",
+                "mobile_sensor_crack",
+                "keccak256",
+                "mt19937_64",
+                "batch_profanity",
+                "trust_wallet_crack",
+                "milk_sad_crack",
+                "test_mt19937",
+                "milk_sad_crack_multi30",
+            ],
+        }
+    }
+    
+    /// Get the profile name for kernel-to-profile mapping
+    /// Returns the profile that should contain this kernel, if any
+    pub fn for_kernel(kernel_name: &str) -> Option<&'static str> {
+        match kernel_name {
+            "cake_hash" => Some("CakeWalletHashOnly"),
+            "batch_cake_full" => Some("CakeWalletFull"),
+            "mobile_sensor_hash" => Some("MobileSensorHashOnly"),
+            "mobile_sensor_crack" => Some("MobileSensorFull"),
+            _ => None,
+        }
+    }
 }
 
 pub struct GpuSolver {
+    // Primary program (for backward compatibility)
     pro_que: ProQue,
+    // Additional programs for split kernel support
+    programs: HashMap<String, ProQue>,
     kernel_name: String,
     max_work_group_size: usize,
     preferred_work_group_multiple: usize,
@@ -145,6 +338,9 @@ pub struct GpuSolver {
     local_mem_size: u64,
     #[allow(dead_code)]
     profile: KernelProfile,
+    // Context and device for creating additional programs
+    context: Context,
+    device: Device,
 }
 
 impl GpuSolver {
@@ -153,14 +349,17 @@ impl GpuSolver {
         Self::new_with_profile(KernelProfile::Full)
     }
 
-    /// Create a new GPU solver with a specific kernel profile
-    /// This allows reducing constant memory usage for GPUs with limited constant memory
-    pub fn new_with_profile(profile: KernelProfile) -> ocl::Result<Self> {
-        info!("[GPU] Initializing GPU solver with profile: {:?}...", profile);
-
+    /// Helper function to build an OpenCL program from a kernel profile
+    /// Returns the ProQue for the compiled program
+    fn build_program_for_profile(
+        profile: KernelProfile,
+        context_opt: Option<Context>,
+        device_opt: Option<Device>,
+    ) -> ocl::Result<ProQue> {
         let files = profile.get_files();
+        let profile_name = profile.profile_name();
 
-        info!("[GPU] Loading {} kernel files...", files.len());
+        info!("[GPU] Loading {} kernel files for profile {}...", files.len(), profile_name);
         let mut raw_cl_file = String::new();
         for file in &files {
             let path = format!("cl/{}.cl", file);
@@ -172,11 +371,12 @@ impl GpuSolver {
             raw_cl_file.push('\n');
         }
         info!(
-            "[GPU] Total kernel source size: {} bytes",
+            "[GPU] Profile {} source size: {} bytes",
+            profile_name,
             raw_cl_file.len()
         );
 
-        info!("[GPU] Building OpenCL program...");
+        info!("[GPU] Building OpenCL program for profile {}...", profile_name);
         let mut prog_bldr = ocl::Program::builder();
 
         // Add aggressive compiler optimizations
@@ -184,24 +384,43 @@ impl GpuSolver {
             "-w -cl-fast-relaxed-math -cl-mad-enable -cl-no-signed-zeros -cl-unsafe-math-optimizations"
         );
 
-        let pro_que = match ProQue::builder().prog_bldr(prog_bldr).dims(1).build() {
-            Ok(pq) => pq,
+        let builder = if let (Some(context), Some(device)) = (context_opt, device_opt) {
+            ProQue::builder()
+                .context(context)
+                .device(device)
+                .prog_bldr(prog_bldr)
+                .dims(1)
+        } else {
+            ProQue::builder().prog_bldr(prog_bldr).dims(1)
+        };
+
+        match builder.build() {
+            Ok(pq) => {
+                info!("[GPU] ✓ Program for profile {} built successfully", profile_name);
+                Ok(pq)
+            }
             Err(e) => {
                 let err_str = format!("{}", e);
                 // Check for constant memory limit errors (ptxas error with hex byte counts)
                 if err_str.contains("constant data") || err_str.contains("ptxas") {
-                    warn!("[GPU] OpenCL build failed, likely due to constant memory limits");
-                    warn!("[GPU] Error: {}", err_str);
-                    warn!("[GPU] Try using a more restricted kernel profile");
-                    if matches!(profile, KernelProfile::Full) {
-                        warn!("[GPU] Hint: Use KernelProfile::CakeWallet or KernelProfile::MobileSensor");
-                    }
+                    error!("[GPU] OpenCL build failed for profile {}, likely due to constant memory limits", profile_name);
+                    error!("[GPU] Error: {}", err_str);
+                    error!("[GPU] Try using split kernel profiles");
                 }
-                return Err(e);
+                Err(e)
             }
-        };
+        }
+    }
+
+    /// Create a new GPU solver with a specific kernel profile
+    /// This allows reducing constant memory usage for GPUs with limited constant memory
+    pub fn new_with_profile(profile: KernelProfile) -> ocl::Result<Self> {
+        info!("[GPU] Initializing GPU solver with profile: {:?}...", profile);
+
+        let pro_que = Self::build_program_for_profile(profile, None, None)?;
 
         let device = pro_que.device();
+        let context = pro_que.context().clone();
 
         // Query device capabilities for optimal work group sizing
         let max_work_group_size = device.max_wg_size()?;
@@ -237,13 +456,64 @@ impl GpuSolver {
 
         Ok(Self {
             pro_que,
+            programs: HashMap::new(),
             kernel_name: "batch_address".to_string(),
             max_work_group_size,
             preferred_work_group_multiple,
             max_compute_units,
             local_mem_size,
             profile,
+            context,
+            device,
         })
+    }
+
+    /// Create a new GPU solver with split kernel support
+    /// This initializes multiple programs to work around constant memory limits
+    pub fn new_with_split_profiles(profiles: &[KernelProfile]) -> ocl::Result<Self> {
+        if profiles.is_empty() {
+            return Err(ocl::Error::from("At least one profile must be provided"));
+        }
+
+        // Initialize with the first profile
+        let mut solver = Self::new_with_profile(profiles[0])?;
+
+        // Load additional profiles
+        for &profile in &profiles[1..] {
+            let profile_name = profile.profile_name();
+            info!("[GPU] Loading additional profile: {}", profile_name);
+
+            let pro_que = Self::build_program_for_profile(
+                profile,
+                Some(solver.context.clone()),
+                Some(solver.device),
+            )?;
+
+            solver.programs.insert(profile_name.to_string(), pro_que);
+        }
+
+        info!("[GPU] ✓ GPU solver initialized with {} programs", solver.programs.len() + 1);
+        Ok(solver)
+    }
+
+    /// Get the ProQue for a specific kernel
+    /// If the kernel requires a separate program, it returns that, otherwise the default
+    fn get_pro_que_for_kernel(&self, kernel_name: &str) -> &ProQue {
+        // Use centralized kernel-to-profile mapping
+        if let Some(profile_name) = KernelProfile::for_kernel(kernel_name) {
+            if let Some(pro_que) = self.programs.get(profile_name) {
+                return pro_que;
+            } else {
+                // Warn if expected profile is not loaded (possible configuration error)
+                warn!(
+                    "[GPU] Kernel '{}' expects profile '{}', but profile not loaded. Falling back to default program.",
+                    kernel_name, profile_name
+                );
+            }
+        }
+
+        // Fall back to default program
+        &self.pro_que
     }
 
     // Helper function to calculate optimal local work size based on device capabilities
@@ -521,9 +791,12 @@ impl GpuSolver {
         let batch_size = timestamps.len();
         let target_count = target_hashes.len() / 32;
 
+        // Get the appropriate program for this kernel
+        let pro_que = self.get_pro_que_for_kernel("cake_hash");
+
         // Use pinned memory for faster transfers
         let buffer_timestamps = Buffer::builder()
-            .queue(self.pro_que.queue().clone())
+            .queue(pro_que.queue().clone())
             .flags(MemFlags::new().read_only().alloc_host_ptr().copy_host_ptr())
             .len(batch_size)
             .copy_host_slice(timestamps)
@@ -531,7 +804,7 @@ impl GpuSolver {
 
         // Input buffer: target hashes (read-only, can be cached)
         let buffer_hashes = Buffer::builder()
-            .queue(self.pro_que.queue().clone())
+            .queue(pro_que.queue().clone())
             .flags(MemFlags::new().read_only().alloc_host_ptr().copy_host_ptr())
             .len(target_hashes.len())
             .copy_host_slice(target_hashes)
@@ -541,14 +814,14 @@ impl GpuSolver {
         // Max 1024 results per batch (unlikely to find many)
         let max_results = 1024;
         let buffer_results = Buffer::<u64>::builder()
-            .queue(self.pro_que.queue().clone())
+            .queue(pro_que.queue().clone())
             .flags(MemFlags::new().write_only().alloc_host_ptr())
             .len(max_results)
             .build()?;
 
         // Output buffer: result count
         let buffer_count = Buffer::<u32>::builder()
-            .queue(self.pro_que.queue().clone())
+            .queue(pro_que.queue().clone())
             .flags(
                 MemFlags::new()
                     .read_write()
@@ -562,8 +835,7 @@ impl GpuSolver {
         // Calculate optimal local work size
         let local_work_size = self.calculate_local_work_size(batch_size);
 
-        let kernel = self
-            .pro_que
+        let kernel = pro_que
             .kernel_builder("cake_hash")
             .arg(&buffer_timestamps)
             .arg(&buffer_hashes)
@@ -603,9 +875,12 @@ impl GpuSolver {
             return Ok(Vec::new());
         }
 
+        // Get the appropriate program for this kernel
+        let pro_que = self.get_pro_que_for_kernel("mobile_sensor_hash");
+
         // Input buffer: device indices (with pinned memory)
         let buffer_indices = Buffer::builder()
-            .queue(self.pro_que.queue().clone())
+            .queue(pro_que.queue().clone())
             .flags(MemFlags::new().read_only().alloc_host_ptr().copy_host_ptr())
             .len(count)
             .copy_host_slice(indices)
@@ -614,7 +889,7 @@ impl GpuSolver {
         // Output buffer: hashes (count * 32 bytes, with pinned memory)
         let out_len = count * 32;
         let buffer_out = Buffer::<u8>::builder()
-            .queue(self.pro_que.queue().clone())
+            .queue(pro_que.queue().clone())
             .flags(MemFlags::new().write_only().alloc_host_ptr())
             .len(out_len)
             .build()?;
@@ -622,8 +897,7 @@ impl GpuSolver {
         // Calculate optimal local work size
         let local_work_size = self.calculate_local_work_size(count);
 
-        let kernel = self
-            .pro_que
+        let kernel = pro_que
             .kernel_builder("mobile_sensor_hash")
             .arg(&buffer_indices)
             .arg(&buffer_out)
@@ -736,16 +1010,19 @@ impl GpuSolver {
             h3 |= (byte as u32) << (i * 8);
         }
 
+        // Get the appropriate program for this kernel
+        let pro_que = self.get_pro_que_for_kernel("mobile_sensor_crack");
+
         // Output buffers (with pinned memory for faster results readback)
         let max_results = 1024;
         let buffer_results = Buffer::<u64>::builder()
-            .queue(self.pro_que.queue().clone())
+            .queue(pro_que.queue().clone())
             .flags(MemFlags::new().write_only().alloc_host_ptr())
             .len(max_results)
             .build()?;
 
         let buffer_count = Buffer::<u32>::builder()
-            .queue(self.pro_que.queue().clone())
+            .queue(pro_que.queue().clone())
             .flags(
                 MemFlags::new()
                     .read_write()
@@ -763,8 +1040,7 @@ impl GpuSolver {
         let global_work_size = range.div_ceil(local_work_size) * local_work_size;
         let offset: u64 = 0;
 
-        let kernel = self
-            .pro_que
+        let kernel = pro_que
             .kernel_builder("mobile_sensor_crack")
             .arg(&buffer_results)
             .arg(&buffer_count)
@@ -1043,9 +1319,12 @@ impl GpuSolver {
             return Ok(Vec::new());
         }
 
+        // Get the appropriate program for this kernel
+        let pro_que = self.get_pro_que_for_kernel(kernel_name);
+
         // Input buffer: Seed indices
         let buffer_seeds = Buffer::<u32>::builder()
-            .queue(self.pro_que.queue().clone())
+            .queue(pro_que.queue().clone())
             .flags(MemFlags::new().read_only().copy_host_ptr())
             .len(batch_size)
             .copy_host_slice(seed_indices)
@@ -1055,13 +1334,12 @@ impl GpuSolver {
         // Using u8 buffer for direct byte access
         let total_output_bytes = batch_size * 40 * 33;
         let buffer_results = Buffer::<u8>::builder()
-            .queue(self.pro_que.queue().clone())
+            .queue(pro_que.queue().clone())
             .flags(MemFlags::new().write_only().alloc_host_ptr())
             .len(total_output_bytes)
             .build()?;
 
-        let kernel = self
-            .pro_que
+        let kernel = pro_que
             .kernel_builder(kernel_name)
             .arg(&buffer_seeds)
             .arg(&buffer_results)
