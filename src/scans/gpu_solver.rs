@@ -18,16 +18,16 @@ pub enum KernelProfile {
     MobileSensor,
     /// Cake wallet hash profile - ONLY includes cake_hash kernel (no secp256k1)
     /// Required kernels: cake_hash
-    /// Memory usage: ~45KB (within 64KB limit)
+    /// Memory usage: Large wordlist tables now in global memory (not constant memory)
     CakeWalletHash,
     /// Cake wallet full profile - ONLY includes batch_cake_full kernel (with secp256k1)
     /// Required kernels: batch_cake_full
-    /// Memory usage: ~280KB (exceeds 64KB limit on most GPUs)
-    /// Note: This profile may fail on GPUs with limited constant memory
+    /// Source size: ~280KB, but lookup tables are in global memory (not constant memory)
+    /// This profile should work on all GPUs with standard 64KB constant memory limit
     CakeWalletFull,
     /// Legacy: Cake wallet profile - includes both cake_hash and batch_cake_full
     /// DEPRECATED: Use CakeWalletHash and CakeWalletFull separately
-    /// This profile exceeds constant memory limits on most GPUs
+    /// Note: Large lookup tables have been moved to global memory to fix constant memory issues
     #[deprecated(note = "Use CakeWalletHash and CakeWalletFull separately instead")]
     CakeWallet,
 }
