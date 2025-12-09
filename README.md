@@ -379,7 +379,11 @@ This measures throughput for:
 - [x] Complete Android SecureRandom private key recovery implementation
 - [x] **[COMPLETED]** Research Update #13 support (224k+ wallets, 24-word BIP49)
   - See detailed documentation: [RESEARCH_UPDATE_13.md](RESEARCH_UPDATE_13.md)
+- [x] **[COMPLETED]** Fix critical P2SH-P2WPKH address generation in GPU kernels
+  - See analysis: [HASHCAT_ANALYSIS_SUMMARY.md](HASHCAT_ANALYSIS_SUMMARY.md)
 - [ ] **[HIGH PRIORITY]** Implement Randstorm/BitcoinJS scanner (2011-2015 vulnerability)
+- [ ] **[HIGH PRIORITY]** Create hashcat modules for external tool integration
+  - See specifications: [HASHCAT_MODULES_RECOMMENDED.md](HASHCAT_MODULES_RECOMMENDED.md)
 - [ ] **[CRITICAL]** Add Electrum seed version prefix validation for Cake Wallet
 - [ ] **[HIGH]** Implement Trust Wallet iOS minstd_rand0 scanner (CVE-2024-23660)
 - [ ] **[HIGH]** Add multi-path derivation support (BIP44/49/84/86)
@@ -395,6 +399,29 @@ This measures throughput for:
 - [ ] Complete Profanity vanity address scanner
 
 See [MILKSAD_GAP_ANALYSIS.md](MILKSAD_GAP_ANALYSIS.md) for detailed gap analysis and implementation priorities.
+
+## Documentation
+
+### Technical Documentation
+
+- **[HASHCAT_ANALYSIS_SUMMARY.md](HASHCAT_ANALYSIS_SUMMARY.md)** - Executive summary of hashcat module status and address format analysis
+- **[HASHCAT_MODULE_ANALYSIS.md](HASHCAT_MODULE_ANALYSIS.md)** - Comprehensive technical analysis of OpenCL kernels and address formats
+- **[HASHCAT_MODULES_RECOMMENDED.md](HASHCAT_MODULES_RECOMMENDED.md)** - Specifications for creating hashcat-compatible modules
+- **[ADDRESS_FORMAT_REFERENCE.md](ADDRESS_FORMAT_REFERENCE.md)** - Quick reference for Bitcoin address types and generation
+- **[RESEARCH_UPDATE_13.md](RESEARCH_UPDATE_13.md)** - Milk Sad Research Update #13 implementation details
+- **[OPENCL_OPTIMIZATIONS.md](OPENCL_OPTIMIZATIONS.md)** - GPU performance optimization guide
+- **[GPU_OPTIMIZATION_GUIDE.md](GPU_OPTIMIZATION_GUIDE.md)** - Advanced GPU optimization techniques
+- **[SECURITY.md](SECURITY.md)** - Security policy and vulnerability reporting
+
+### GPU Kernels
+
+The project includes extensive OpenCL GPU kernels in the `cl/` directory:
+- **Milk Sad:** `milk_sad_crack.cl`, `milk_sad_multipath.cl` (supports BIP44/49/84)
+- **Trust Wallet:** `trust_wallet_crack.cl`, `trust_wallet_multipath.cl` (supports BIP44/49/84)
+- **Cake Wallet:** `cake_wallet_crack.cl`, `cake_wallet_dart_prng.cl`
+- **Other:** Mobile sensor, profanity, minstd_rand, and more
+
+**Important:** Recent fixes ensure correct P2SH-P2WPKH (BIP49) address generation for Research Update #13 compatibility.
 
 ## License
 
