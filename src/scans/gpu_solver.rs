@@ -151,6 +151,20 @@ impl KernelProfile {
             ],
         }
     }
+    
+    /// Get the profile name for use as a key in the programs HashMap
+    fn profile_name(&self) -> &'static str {
+        match self {
+            KernelProfile::Full => "Full",
+            KernelProfile::Minimal => "Minimal",
+            KernelProfile::MobileSensor => "MobileSensor",
+            KernelProfile::CakeWallet => "CakeWallet",
+            KernelProfile::CakeWalletHashOnly => "CakeWalletHashOnly",
+            KernelProfile::CakeWalletFull => "CakeWalletFull",
+            KernelProfile::MobileSensorHashOnly => "MobileSensorHashOnly",
+            KernelProfile::MobileSensorFull => "MobileSensorFull",
+        }
+    }
 }
 
 pub struct GpuSolver {
@@ -178,14 +192,17 @@ impl GpuSolver {
         Self::new_with_profile(KernelProfile::Full)
     }
 
-    /// Create a new GPU solver with a specific kernel profile
-    /// This allows reducing constant memory usage for GPUs with limited constant memory
-    pub fn new_with_profile(profile: KernelProfile) -> ocl::Result<Self> {
-        info!("[GPU] Initializing GPU solver with profile: {:?}...", profile);
-
+    /// Helper function to build an OpenCL program from a kernel profile
+    /// Returns the ProQue for the compiled program
+    fn build_program_for_profile(
+        profile: KernelProfile,
+        context_opt: Option<Context>,
+        device_opt: Option<Device>,
+    ) -> ocl::Result<ProQue> {
         let files = profile.get_files();
+        let profile_name = profile.profile_name();
 
-        info!("[GPU] Loading {} kernel files...", files.len());
+        info!("[GPU] Loading {} kernel files for profile {}...", files.len(), profile_name);
         let mut raw_cl_file = String::new();
         for file in &files {
             let path = format!("cl/{}.cl", file);
@@ -197,11 +214,12 @@ impl GpuSolver {
             raw_cl_file.push('\n');
         }
         info!(
-            "[GPU] Total kernel source size: {} bytes",
+            "[GPU] Profile {} source size: {} bytes",
+            profile_name,
             raw_cl_file.len()
         );
 
-        info!("[GPU] Building OpenCL program...");
+        info!("[GPU] Building OpenCL program for profile {}...", profile_name);
         let mut prog_bldr = ocl::Program::builder();
 
         // Add aggressive compiler optimizations
@@ -209,22 +227,40 @@ impl GpuSolver {
             "-w -cl-fast-relaxed-math -cl-mad-enable -cl-no-signed-zeros -cl-unsafe-math-optimizations"
         );
 
-        let pro_que = match ProQue::builder().prog_bldr(prog_bldr).dims(1).build() {
-            Ok(pq) => pq,
+        let builder = if let (Some(context), Some(device)) = (context_opt, device_opt) {
+            ProQue::builder()
+                .context(context)
+                .device(device)
+                .prog_bldr(prog_bldr)
+                .dims(1)
+        } else {
+            ProQue::builder().prog_bldr(prog_bldr).dims(1)
+        };
+
+        match builder.build() {
+            Ok(pq) => {
+                info!("[GPU] ✓ Program for profile {} built successfully", profile_name);
+                Ok(pq)
+            }
             Err(e) => {
                 let err_str = format!("{}", e);
                 // Check for constant memory limit errors (ptxas error with hex byte counts)
                 if err_str.contains("constant data") || err_str.contains("ptxas") {
-                    warn!("[GPU] OpenCL build failed, likely due to constant memory limits");
-                    warn!("[GPU] Error: {}", err_str);
-                    warn!("[GPU] Try using split kernel profiles");
-                    if matches!(profile, KernelProfile::Full | KernelProfile::CakeWallet | KernelProfile::MobileSensor) {
-                        warn!("[GPU] Hint: Use split profiles like CakeWalletHashOnly/CakeWalletFull");
-                    }
+                    error!("[GPU] OpenCL build failed for profile {}, likely due to constant memory limits", profile_name);
+                    error!("[GPU] Error: {}", err_str);
+                    error!("[GPU] Try using split kernel profiles");
                 }
-                return Err(e);
+                Err(e)
             }
-        };
+        }
+    }
+
+    /// Create a new GPU solver with a specific kernel profile
+    /// This allows reducing constant memory usage for GPUs with limited constant memory
+    pub fn new_with_profile(profile: KernelProfile) -> ocl::Result<Self> {
+        info!("[GPU] Initializing GPU solver with profile: {:?}...", profile);
+
+        let pro_que = Self::build_program_for_profile(profile, None, None)?;
 
         let device = pro_que.device();
         let context = pro_que.context().clone();
@@ -287,51 +323,16 @@ impl GpuSolver {
 
         // Load additional profiles
         for &profile in &profiles[1..] {
-            let profile_name = format!("{:?}", profile);
+            let profile_name = profile.profile_name();
             info!("[GPU] Loading additional profile: {}", profile_name);
 
-            let files = profile.get_files();
-            let mut raw_cl_file = String::new();
-            for file in &files {
-                let path = format!("cl/{}.cl", file);
-                let content = std::fs::read_to_string(&path).map_err(|e| {
-                    error!("[GPU] ERROR: Failed to read {}: {}", path, e);
-                    ocl::Error::from(e.to_string())
-                })?;
-                raw_cl_file.push_str(&content);
-                raw_cl_file.push('\n');
-            }
+            let pro_que = Self::build_program_for_profile(
+                profile,
+                Some(solver.context.clone()),
+                Some(solver.device),
+            )?;
 
-            info!(
-                "[GPU] Profile {} source size: {} bytes",
-                profile_name,
-                raw_cl_file.len()
-            );
-
-            let mut prog_bldr = ocl::Program::builder();
-            prog_bldr.src(raw_cl_file).cmplr_opt(
-                "-w -cl-fast-relaxed-math -cl-mad-enable -cl-no-signed-zeros -cl-unsafe-math-optimizations"
-            );
-
-            let pro_que = match ProQue::builder()
-                .context(solver.context.clone())
-                .device(solver.device)
-                .prog_bldr(prog_bldr)
-                .dims(1)
-                .build()
-            {
-                Ok(pq) => pq,
-                Err(e) => {
-                    let err_str = format!("{}", e);
-                    if err_str.contains("constant data") || err_str.contains("ptxas") {
-                        error!("[GPU] Profile {} failed due to constant memory limits", profile_name);
-                        error!("[GPU] Error: {}", err_str);
-                    }
-                    return Err(e);
-                }
-            };
-
-            solver.programs.insert(profile_name, pro_que);
+            solver.programs.insert(profile_name.to_string(), pro_que);
         }
 
         info!("[GPU] ✓ GPU solver initialized with {} programs", solver.programs.len() + 1);
@@ -341,7 +342,7 @@ impl GpuSolver {
     /// Get the ProQue for a specific kernel
     /// If the kernel requires a separate program, it returns that, otherwise the default
     fn get_pro_que_for_kernel(&self, kernel_name: &str) -> &ProQue {
-        // Map kernel names to profiles
+        // Map kernel names to profile names
         let profile_name = match kernel_name {
             "cake_hash" => Some("CakeWalletHashOnly"),
             "batch_cake_full" => Some("CakeWalletFull"),
