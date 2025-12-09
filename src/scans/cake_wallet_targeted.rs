@@ -48,20 +48,21 @@ pub fn run_targeted() -> Result<()> {
 
     #[cfg(feature = "gpu")]
     {
-        use crate::scans::gpu_solver::KernelProfile;
-        
-        // Use split profiles to avoid constant memory limits
-        // CakeWalletHashOnly: for cake_hash kernel (no secp256k1)
-        // CakeWalletFull: for batch_cake_full kernel (with secp256k1)
-        let solver = match GpuSolver::new_with_split_profiles(&[
-            KernelProfile::CakeWalletHashOnly,
-            KernelProfile::CakeWalletFull,
-        ]) {
+        // Note: CakeWallet profile includes both cake_hash and batch_cake_full kernels.
+        // Large lookup tables (BIP39 wordlist, secp256k1 precomputation) have been moved
+        // from constant memory to global memory to avoid the 64KB constant memory limit.
+        // The kernels should now compile on all standard GPUs, but very large kernel sizes
+        // may still occasionally cause issues on some older or resource-constrained GPUs
+        // due to factors like register pressure or compilation timeouts.
+        #[allow(deprecated)]
+        let solver = match GpuSolver::new_with_profile(crate::scans::gpu_solver::KernelProfile::CakeWallet) {
             Ok(s) => s,
             Err(e) => {
                 warn!("[GPU] Failed to initialize GPU solver with split profiles: {}", e);
                 warn!("[GPU] This scanner requires GPU acceleration with cake_hash and batch_cake_full kernels");
-                anyhow::bail!("GPU initialization failed. Split profiles are required to stay within constant memory limits.");
+                warn!("[GPU] The large precomputation tables have been moved from constant to global memory");
+                warn!("[GPU] but kernel compilation may still fail on older or resource-constrained GPUs");
+                anyhow::bail!("GPU initialization failed. The kernel may not be compatible with your GPU.");
             }
         };
         let network = Network::Bitcoin;

@@ -8,7 +8,7 @@ ptxas error: File uses too much global constant data (0x11798 bytes, 0x10000 max
 ```
 
 This error occurs when the combined OpenCL kernel exceeds the GPU's constant memory limit:
-- **Required**: ~71KB (0x11798 bytes)
+- **Required**: ~71KB (0x11798 bytes) of constant memory
 - **Maximum**: 64KB (0x10000 bytes = 65536 bytes)
 
 ### Affected Scanners
@@ -18,58 +18,62 @@ This error occurs when the combined OpenCL kernel exceeds the GPU's constant mem
 
 ### Root Cause
 
-The original implementation loaded all OpenCL kernels into a single program, including:
-- `secp256k1_prec.cl`: 109KB (precomputation tables for elliptic curve operations)
-- `bip39_wordlist_complete.cl`: 45KB (complete BIP39 wordlist)
-- `mnemonic_constants.cl`: 23KB (word lengths and other constants)
+The large lookup tables were declared with `__constant` qualifier in OpenCL:
+- `secp256k1_prec.cl`: 109KB source file (precomputation tables for elliptic curve operations)
+- `bip39_wordlist_complete.cl`: 45KB source file (complete BIP39 wordlist)
+- `mnemonic_constants.cl`: 23KB source file (word lengths and other constants)
 
-Many GPUs have a 64KB constant memory limit. Even with kernel profile system that loads only required files, the CakeWallet profile (282KB source → 71KB constant data) still exceeded the limit.
+When these were compiled with `__constant`, they consumed GPU constant memory which is typically limited to 64KB on consumer GPUs.
 
-## Solution
+## Solution (Latest)
 
-Implemented a **split kernel program system** that creates separate OpenCL programs for different kernel groups, so each program only loads the constant data it needs.
+### Moving Data from Constant to Global Memory
 
-### Split Kernel Profiles
+The primary fix is to **remove `__constant` declarations** from the large lookup tables, allowing them to reside in global memory instead of constant memory:
 
-Instead of loading all kernels into one program, we split them by functionality:
+1. **Modified `cl/mnemonic_constants.cl`**:
+   - Changed `__constant char words[2048][9]` → `__attribute__((aligned(4))) char words[2048][9]`
+   - Changed `__constant unsigned char word_lengths[2048]` → `__attribute__((aligned(4))) unsigned char word_lengths[2048]`
 
-1. **CakeWalletHashOnly** (91KB source)
-   - Includes: sha2, dart_prng, mnemonic_constants, bip39_wordlist_complete, cake_hash
-   - Does NOT include: secp256k1_prec (109KB saved!)
-   - Use for: Timestamp → Mnemonic → SHA-256 hash operations
-   - Constant memory: Well under 64KB limit
+2. **Modified `cl/secp256k1_prec.cl`**:
+   - Changed `__constant secp256k1_ge_storage prec[128][4]` → `__attribute__((aligned(16))) secp256k1_ge_storage prec[128][4]`
 
-2. **CakeWalletFull** (278KB source)
-   - Includes: sha2, sha512, secp256k1 (with prec), address derivation, batch_cake_full
-   - Includes: mnemonic_constants, dart_prng, bip39_wordlist_complete
-   - Use for: Full BIP32/44 address derivation from verified seeds
-   - Constant memory: Within limits (separate program)
+### Impact
 
-3. **MobileSensorHashOnly** (22KB source)
-   - Includes: sha2, mobile_sensor_hash
-   - Minimal footprint for hash-only operations
-   - Constant memory: Tiny (only ~22KB)
+- **Constant Memory**: Reduced from 71KB to well under 64KB limit
+- **Global Memory**: Increased usage by ~177KB for the lookup tables
+- **Performance**: Minimal impact as these are infrequently accessed lookup tables
+- **Compatibility**: Should now work on all GPUs with standard 64KB constant memory limit
 
-4. **MobileSensorFull** (198KB source)
-   - Includes: sha2, secp256k1 (with prec), mobile_sensor_crack
-   - Use for: Full sensor value brute-forcing with address derivation
-   - Constant memory: Within limits (separate program)
+### Kernel Profiles (Supporting Feature)
 
-### How It Works
+Six profiles are available for different use cases:
 
-The `GpuSolver` now maintains multiple OpenCL programs:
-- **Primary program** (`pro_que`): Default program for backward compatibility
-- **Additional programs** (`programs: HashMap<String, ProQue>`): Specialized programs for split kernels
-
-When a kernel is executed:
-1. `get_pro_que_for_kernel()` routes the kernel to the appropriate program
-2. Hash-only kernels use lightweight programs without secp256k1
-3. Full derivation kernels use complete programs with secp256k1
-
-This approach means:
-- `cake_hash` runs in a 91KB program (no secp256k1 constant data)
-- `batch_cake_full` runs in a 278KB program (with secp256k1 constant data)
-- Each program stays within the 64KB constant memory limit
+1. **Full** (default)
+   - Includes all kernels
+   - Now works on standard GPUs after constant memory fix
+   
+2. **Minimal**
+   - Basic crypto primitives only (sha2, ripemd, sha512)
+   - Smallest memory footprint
+   
+3. **MobileSensor**
+   - Includes: sha2, mobile_sensor_hash, mobile_sensor_crack
+   - Does not include: BIP39 constants, secp256k1 precomputation
+   - Memory usage: ~15KB constant memory
+   
+4. **CakeWalletHash**
+   - Includes: sha2, mnemonic_constants, BIP39 wordlist, cake_hash
+   - Does NOT include: secp256k1 precomputation (batch_cake_full)
+   - Use for: Hash-only operations in Cake Wallet scanning
+   
+5. **CakeWalletFull**
+   - Includes: All of CakeWallet plus secp256k1 for batch_cake_full
+   - Use for: Full address derivation in Cake Wallet scanning
+   
+6. **CakeWallet** (deprecated)
+   - Legacy profile that includes both cake_hash and batch_cake_full
+   - Use CakeWalletHash and CakeWalletFull separately for better control
 
 ### Code Changes
 
