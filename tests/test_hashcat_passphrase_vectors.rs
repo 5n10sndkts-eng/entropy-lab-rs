@@ -28,6 +28,12 @@ fn p2pkh_from_hash160(hash160: &[u8; 20], version: u8) -> String {
     bs58::encode(&addr_bytes).with_check().into_string()
 }
 
+/// Helper function to convert secp256k1 compressed public key to bitcoin::PublicKey
+fn to_bitcoin_pubkey(compressed_bytes: &[u8]) -> bitcoin::PublicKey {
+    bitcoin::PublicKey::from_slice(compressed_bytes)
+        .expect("Failed to convert to bitcoin::PublicKey")
+}
+
 #[test]
 fn test_hashcat_passphrase_sha256() {
     println!("\n=== Test: SHA256('hashcat') ===\n");
@@ -159,7 +165,7 @@ fn test_hashcat_passphrase_compressed() {
     println!("  3. Hash160: {}", hash160_hex);
     
     // Step 5: Generate addresses
-    let bitcoin_public_key = bitcoin::PublicKey::from_slice(&compressed_bytes).expect("Invalid public key");
+    let bitcoin_public_key = to_bitcoin_pubkey(&compressed_bytes);
     let address_p2pkh = Address::p2pkh(bitcoin_public_key, network);
     let address_p2wpkh = Address::p2wpkh(&compressed, network);
     
@@ -213,7 +219,7 @@ fn test_hashcat_passphrase_all_formats() {
     // Compressed
     let compressed = CompressedPublicKey(public_key_secp);
     let compressed_bytes = compressed.to_bytes();
-    let bitcoin_public_key = bitcoin::PublicKey::from_slice(&compressed_bytes).expect("Invalid public key");
+    let bitcoin_public_key = to_bitcoin_pubkey(&compressed_bytes);
     let address_p2pkh_compressed = Address::p2pkh(bitcoin_public_key, network);
     let address_p2wpkh = Address::p2wpkh(&compressed, network);
     let address_p2sh_p2wpkh = Address::p2shwpkh(&compressed, network);
@@ -237,6 +243,9 @@ fn test_hashcat_passphrase_all_formats() {
     println!("  Uncompressed: {}", hex::encode(&uncompressed_hash160));
     println!("  Compressed:   {}", hex::encode(&hash160(&compressed_bytes)));
     println!();
+    // Hashcat Module Test Vectors:
+    // Module 01337 uses $bitcoin$ prefix for uncompressed public keys
+    // Module 01338 uses $bitcoin-compressed$ prefix for compressed public keys
     println!("Hashcat Module Test Vectors:");
     println!("  Module 01337 (uncompressed): $bitcoin${}", address_uncompressed);
     println!("  Module 01338 (compressed):   $bitcoin-compressed${}", address_p2pkh_compressed);
@@ -286,12 +295,12 @@ fn test_additional_brainwallet_passphrases() {
         let privkey_bytes = Sha256::digest(passphrase.as_bytes());
         let privkey_hex = hex::encode(&privkey_bytes);
         
-        let secret_key = SecretKey::from_slice(&privkey_bytes).unwrap();
+        let secret_key = SecretKey::from_slice(&privkey_bytes).expect("Invalid private key from passphrase");
         let public_key_secp = secret_key.public_key(&secp);
         let compressed = CompressedPublicKey(public_key_secp);
         
         let compressed_bytes = compressed.to_bytes();
-        let bitcoin_public_key = bitcoin::PublicKey::from_slice(&compressed_bytes).unwrap();
+        let bitcoin_public_key = to_bitcoin_pubkey(&compressed_bytes);
         let address_p2pkh = Address::p2pkh(bitcoin_public_key, network);
         let address_p2wpkh = Address::p2wpkh(&compressed, network);
         
