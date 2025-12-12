@@ -44,7 +44,10 @@ fn test_p2sh_p2wpkh_step_by_step() {
 
     // Step 1: Get compressed public key
     let compressed_pubkey = pubkey.serialize();
-    println!("Step 1 - Compressed pubkey: {}", hex::encode(compressed_pubkey));
+    println!(
+        "Step 1 - Compressed pubkey: {}",
+        hex::encode(compressed_pubkey)
+    );
     assert_eq!(
         hex::encode(compressed_pubkey),
         "0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798"
@@ -55,7 +58,10 @@ fn test_p2sh_p2wpkh_step_by_step() {
     let mut ripemd = Ripemd160::new();
     ripemd.update(sha256_pubkey);
     let keyhash: [u8; 20] = ripemd.finalize().into();
-    println!("Step 2 - keyhash (Hash160 of pubkey): {}", hex::encode(keyhash));
+    println!(
+        "Step 2 - keyhash (Hash160 of pubkey): {}",
+        hex::encode(keyhash)
+    );
     assert_eq!(
         hex::encode(keyhash),
         "751e76e8199196d454941c45d1b3a323f1433bd6"
@@ -77,7 +83,10 @@ fn test_p2sh_p2wpkh_step_by_step() {
     let mut ripemd2 = Ripemd160::new();
     ripemd2.update(sha256_script);
     let script_hash: [u8; 20] = ripemd2.finalize().into();
-    println!("Step 4 - scriptHash (Hash160 of redeemScript): {}", hex::encode(script_hash));
+    println!(
+        "Step 4 - scriptHash (Hash160 of redeemScript): {}",
+        hex::encode(script_hash)
+    );
     assert_eq!(
         hex::encode(script_hash),
         "bcfeb728b584253d5f3f70bcb780e9ef218a68f4"
@@ -134,7 +143,9 @@ fn test_bip49_derivation_path() {
         let secp = Secp256k1::new();
         let root = Xpriv::new_master(Network::Bitcoin, &seed).expect("Failed to create root key");
         let path = DerivationPath::from_str(path_str).expect("Failed to parse path");
-        let derived = root.derive_priv(&secp, &path).expect("Failed to derive key");
+        let derived = root
+            .derive_priv(&secp, &path)
+            .expect("Failed to derive key");
 
         let keypair = derived.to_keypair(&secp);
         let compressed_pubkey = CompressedPublicKey(keypair.public_key());
@@ -216,7 +227,10 @@ fn test_brainwallet_hashcat_passphrase() {
     let uncompressed = pubkey.serialize_uncompressed();
     let compressed = pubkey.serialize();
 
-    println!("Uncompressed pubkey: {}...", hex::encode(&uncompressed[..33]));
+    println!(
+        "Uncompressed pubkey: {}...",
+        hex::encode(&uncompressed[..33])
+    );
     println!("Compressed pubkey: {}", hex::encode(compressed));
 
     // P2PKH (uncompressed) - "1" prefix
@@ -240,10 +254,22 @@ fn test_brainwallet_hashcat_passphrase() {
     println!("P2SH-P2WPKH: {}", p2sh_p2wpkh);
 
     // Verify address format correctness
-    assert!(p2pkh_uncompressed.starts_with('1'), "P2PKH uncompressed should start with '1'");
-    assert!(p2pkh_compressed.to_string().starts_with('1'), "P2PKH compressed should start with '1'");
-    assert!(p2wpkh.to_string().starts_with("bc1q"), "P2WPKH should start with 'bc1q'");
-    assert!(p2sh_p2wpkh.to_string().starts_with('3'), "P2SH-P2WPKH should start with '3'");
+    assert!(
+        p2pkh_uncompressed.starts_with('1'),
+        "P2PKH uncompressed should start with '1'"
+    );
+    assert!(
+        p2pkh_compressed.to_string().starts_with('1'),
+        "P2PKH compressed should start with '1'"
+    );
+    assert!(
+        p2wpkh.to_string().starts_with("bc1q"),
+        "P2WPKH should start with 'bc1q'"
+    );
+    assert!(
+        p2sh_p2wpkh.to_string().starts_with('3'),
+        "P2SH-P2WPKH should start with '3'"
+    );
 
     // Verify uncompressed and compressed P2PKH produce different addresses
     assert_ne!(
@@ -273,7 +299,10 @@ fn test_brainwallet_test_vectors() {
             "correct horse battery staple",
             "c4bbcb1fbec99d65bf59d85c8cb62ee2db963f0fe106f483d9afa73bd4e39a8a",
         ),
-        ("", "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"),
+        (
+            "",
+            "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        ),
     ];
 
     for (passphrase, expected_privkey) in test_cases {
@@ -447,7 +476,9 @@ fn test_electrum_cake_wallet_path() {
 
     // Electrum derivation path: m/0'/0/0
     let path = DerivationPath::from_str("m/0'/0/0").expect("Failed to parse path");
-    let derived = root.derive_priv(&secp, &path).expect("Failed to derive key");
+    let derived = root
+        .derive_priv(&secp, &path)
+        .expect("Failed to derive key");
 
     let keypair = derived.to_keypair(&secp);
     let compressed_pubkey = CompressedPublicKey(keypair.public_key());
@@ -532,7 +563,9 @@ fn test_research_update_13_bip49() {
 
     // BIP49 path: m/49'/0'/0'/0/0
     let path = DerivationPath::from_str("m/49'/0'/0'/0/0").expect("Failed to parse path");
-    let derived = root.derive_priv(&secp, &path).expect("Failed to derive key");
+    let derived = root
+        .derive_priv(&secp, &path)
+        .expect("Failed to derive key");
 
     let keypair = derived.to_keypair(&secp);
     let compressed_pubkey = CompressedPublicKey(keypair.public_key());
@@ -625,7 +658,9 @@ fn test_all_address_formats_from_mnemonic() {
 
     for (path_str, description, expected_prefix) in test_cases {
         let path = DerivationPath::from_str(path_str).expect("Failed to parse path");
-        let derived = root.derive_priv(&secp, &path).expect("Failed to derive key");
+        let derived = root
+            .derive_priv(&secp, &path)
+            .expect("Failed to derive key");
         let keypair = derived.to_keypair(&secp);
         let compressed_pubkey = CompressedPublicKey(keypair.public_key());
 

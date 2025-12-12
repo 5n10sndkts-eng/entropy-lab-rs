@@ -55,16 +55,8 @@ fn test_secp256k1_generator_point() {
     println!("Expected G.y: {}", SECP256K1_G_Y_HEX.to_lowercase());
     println!("Got G.y:      {}", y_coord);
 
-    assert_eq!(
-        x_coord.to_uppercase(),
-        SECP256K1_G_X_HEX,
-        "G.x mismatch"
-    );
-    assert_eq!(
-        y_coord.to_uppercase(),
-        SECP256K1_G_Y_HEX,
-        "G.y mismatch"
-    );
+    assert_eq!(x_coord.to_uppercase(), SECP256K1_G_X_HEX, "G.x mismatch");
+    assert_eq!(y_coord.to_uppercase(), SECP256K1_G_Y_HEX, "G.y mismatch");
 
     println!("\n  Generator point verified.");
 }
@@ -137,8 +129,7 @@ fn test_hash160_chain() {
     // Test vector: known pubkey -> hash160
     // Generator point G compressed (02 prefix because y is even)
     let g_compressed =
-        hex::decode("0279BE667EF9DCBBAC55A06295CE870B07029BFCDB2DCE28D959F2815B16F81798")
-            .unwrap();
+        hex::decode("0279BE667EF9DCBBAC55A06295CE870B07029BFCDB2DCE28D959F2815B16F81798").unwrap();
 
     // Step 1: SHA256
     let sha256_result: [u8; 32] = Sha256::digest(&g_compressed).into();
@@ -217,14 +208,14 @@ fn test_base58check_version_bytes() {
         let address = bs58::encode(&with_version).into_string();
         let first_char = address.chars().next().unwrap();
 
-        println!("{} (0x{:02x}): {} -> '{}'", desc, version, address, first_char);
+        println!(
+            "{} (0x{:02x}): {} -> '{}'",
+            desc, version, address, first_char
+        );
 
         // Note: Prefix depends on hash160 content, so we just verify it's valid Base58
         // The expected_prefix is a guide but actual prefix varies based on hash160 value
-        assert!(
-            "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz"
-                .contains(first_char)
-        );
+        assert!("123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz".contains(first_char));
     }
 
     println!("\n  Version bytes verified.");
@@ -281,7 +272,10 @@ fn test_brainwallet_pipeline_uncompressed() {
     let pubkey = PublicKey::from_secret_key(&secp, &secret);
     let uncompressed = pubkey.serialize_uncompressed();
 
-    println!("Public key (uncompressed): {}...", hex::encode(&uncompressed[..33]));
+    println!(
+        "Public key (uncompressed): {}...",
+        hex::encode(&uncompressed[..33])
+    );
 
     // Step 3: Hash160 of uncompressed pubkey
     let hash160_result = hash160(&uncompressed);
@@ -319,10 +313,7 @@ fn test_brainwallet_pipeline_compressed() {
     let pubkey = PublicKey::from_secret_key(&secp, &secret);
     let compressed = pubkey.serialize();
 
-    println!(
-        "Public key (compressed): {}",
-        hex::encode(compressed)
-    );
+    println!("Public key (compressed): {}", hex::encode(compressed));
 
     // Verify prefix is 02 or 03
     assert!(
@@ -528,7 +519,9 @@ fn test_document_hashcat_discrepancy() {
 
     println!("Passphrase: \"{}\"", passphrase);
     println!();
-    println!("Provided in prompt:  127a3bde6edb8d2e0ceaf2f9e264a3a7a027f29fe64b7f2c37eec3a4c08f6db5");
+    println!(
+        "Provided in prompt:  127a3bde6edb8d2e0ceaf2f9e264a3a7a027f29fe64b7f2c37eec3a4c08f6db5"
+    );
     println!("Actual SHA256:       {}", hex::encode(actual_sha256));
     println!();
     println!("NOTE: These do NOT match!");

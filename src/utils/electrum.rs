@@ -62,8 +62,8 @@ pub fn is_valid_electrum_seed(mnemonic: &str, seed_type: ElectrumSeedType) -> bo
         .join(" ");
 
     // HMAC-SHA512 with key "Seed version"
-    let mut mac = HmacSha512::new_from_slice(b"Seed version")
-        .expect("HMAC key should always be valid");
+    let mut mac =
+        HmacSha512::new_from_slice(b"Seed version").expect("HMAC key should always be valid");
     mac.update(normalized.as_bytes());
     let result = mac.finalize().into_bytes();
 

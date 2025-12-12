@@ -55,14 +55,18 @@ pub fn run_targeted() -> Result<()> {
         // may still occasionally cause issues on some older or resource-constrained GPUs
         // due to factors like register pressure or compilation timeouts.
         #[allow(deprecated)]
-        let solver = match GpuSolver::new_with_profile(crate::scans::gpu_solver::KernelProfile::CakeWallet) {
+        let solver = match GpuSolver::new_with_profile(
+            crate::scans::gpu_solver::KernelProfile::CakeWallet,
+        ) {
             Ok(s) => s,
             Err(e) => {
                 warn!("[GPU] Failed to initialize GPU solver: {}", e);
                 warn!("[GPU] This scanner requires GPU acceleration with cake_hash and batch_cake_full kernels");
                 warn!("[GPU] The large precomputation tables have been moved from constant to global memory");
                 warn!("[GPU] but kernel compilation may still fail on older or resource-constrained GPUs");
-                anyhow::bail!("GPU initialization failed. The kernel may not be compatible with your GPU.");
+                anyhow::bail!(
+                    "GPU initialization failed. The kernel may not be compatible with your GPU."
+                );
             }
         };
         let network = Network::Bitcoin;

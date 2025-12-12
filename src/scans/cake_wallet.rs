@@ -198,20 +198,22 @@ mod tests {
         // GPU returns 25-byte format: version (1) + hash160 (20) + checksum (4)
         // Example 25-byte binary address (version 0x00 for P2PKH mainnet)
         let binary_addr: [u8; 25] = [
-            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-            0x00, 0xf3, 0xa2, 0x0d, 0xcc
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xf3, 0xa2, 0x0d, 0xcc,
         ];
-        
+
         let addr_str = bs58::encode(&binary_addr).into_string();
-        
+
         // Should produce a valid Base58 address starting with "1" (P2PKH mainnet)
         assert!(addr_str.starts_with("1"), "Address should start with '1'");
-        
+
         // Verify it's NOT hex encoded (which would start with "00" and be much longer)
         assert!(!addr_str.starts_with("00"), "Should not be hex encoded");
-        assert!(addr_str.len() < 40, "Base58 addresses are ~34 chars, hex would be 50");
-        
+        assert!(
+            addr_str.len() < 40,
+            "Base58 addresses are ~34 chars, hex would be 50"
+        );
+
         // Verify it only contains valid Base58 characters (excludes 0, O, I, l)
         let base58_chars = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
         for c in addr_str.chars() {

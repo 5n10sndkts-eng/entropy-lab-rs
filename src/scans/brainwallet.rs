@@ -89,7 +89,10 @@ pub fn run_single(passphrase: &str, hash_type: HashType, target: Option<&str>) -
 
         info!("Private Key: {}", hex::encode(privkey));
         info!("Compressed pubkey: {}", hex::encode(compressed_bytes));
-        info!("Uncompressed pubkey: {}...", hex::encode(&uncompressed_bytes[..33]));
+        info!(
+            "Uncompressed pubkey: {}...",
+            hex::encode(&uncompressed_bytes[..33])
+        );
         info!("P2PKH (uncompressed): {}", addr_p2pkh_uncompressed);
         info!("P2PKH (compressed):   {}", addr_p2pkh_compressed);
         info!("P2SH-P2WPKH:          {}", addr_p2sh_p2wpkh);
@@ -285,22 +288,34 @@ mod tests {
         let uncompressed_hash160 = hash160(&uncompressed_bytes);
         let addr_p2pkh_uncompressed = p2pkh_from_hash160(&uncompressed_hash160, 0x00);
         println!("P2PKH (uncompressed): {}", addr_p2pkh_uncompressed);
-        assert!(addr_p2pkh_uncompressed.starts_with('1'), "P2PKH uncompressed should start with '1'");
+        assert!(
+            addr_p2pkh_uncompressed.starts_with('1'),
+            "P2PKH uncompressed should start with '1'"
+        );
 
         // P2PKH (compressed) - uses 33-byte compressed public key
         let addr_p2pkh_compressed = Address::p2pkh(compressed, network);
         println!("P2PKH (compressed):   {}", addr_p2pkh_compressed);
-        assert!(addr_p2pkh_compressed.to_string().starts_with('1'), "P2PKH compressed should start with '1'");
+        assert!(
+            addr_p2pkh_compressed.to_string().starts_with('1'),
+            "P2PKH compressed should start with '1'"
+        );
 
         // P2WPKH (BIP84) - "bc1q" prefix
         let addr_p2wpkh = Address::p2wpkh(&compressed, network);
         println!("P2WPKH:               {}", addr_p2wpkh);
-        assert!(addr_p2wpkh.to_string().starts_with("bc1q"), "P2WPKH should start with 'bc1q'");
+        assert!(
+            addr_p2wpkh.to_string().starts_with("bc1q"),
+            "P2WPKH should start with 'bc1q'"
+        );
 
         // P2SH-P2WPKH (BIP49) - "3" prefix
         let addr_p2sh_p2wpkh = Address::p2shwpkh(&compressed, network);
         println!("P2SH-P2WPKH:          {}", addr_p2sh_p2wpkh);
-        assert!(addr_p2sh_p2wpkh.to_string().starts_with('3'), "P2SH-P2WPKH should start with '3'");
+        assert!(
+            addr_p2sh_p2wpkh.to_string().starts_with('3'),
+            "P2SH-P2WPKH should start with '3'"
+        );
 
         // Verify uncompressed and compressed P2PKH are different
         assert_ne!(
@@ -314,10 +329,22 @@ mod tests {
     #[test]
     fn test_common_brainwallet_passphrases() {
         let test_cases = vec![
-            ("password", "5e884898da28047151d0e56f8dc6292773603d0d6aabbdd62a11ef721d1542d8"),
-            ("satoshi nakamoto", "aa2d3c4a4ae6559e9f13f093cc6e32459c5249da723de810651b4b54373385e2"),
-            ("correct horse battery staple", "c4bbcb1fbec99d65bf59d85c8cb62ee2db963f0fe106f483d9afa73bd4e39a8a"),
-            ("", "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"),
+            (
+                "password",
+                "5e884898da28047151d0e56f8dc6292773603d0d6aabbdd62a11ef721d1542d8",
+            ),
+            (
+                "satoshi nakamoto",
+                "aa2d3c4a4ae6559e9f13f093cc6e32459c5249da723de810651b4b54373385e2",
+            ),
+            (
+                "correct horse battery staple",
+                "c4bbcb1fbec99d65bf59d85c8cb62ee2db963f0fe106f483d9afa73bd4e39a8a",
+            ),
+            (
+                "",
+                "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            ),
         ];
 
         for (passphrase, expected_privkey) in test_cases {
