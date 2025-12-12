@@ -29,6 +29,10 @@ static const u32   SALT_TYPE      = SALT_TYPE_EMBEDDED;
 static const char *ST_PASS        = "";
 static const char *ST_HASH        = "$milksad$49$1514764800$3HERnjC6RDwg6UYx1hHiAKUp6gz1217h2U";
 
+// Timestamp validation constants (Milk Sad vulnerability period)
+#define MILKSAD_MIN_TIMESTAMP 1293840000  // 2011-01-01
+#define MILKSAD_MAX_TIMESTAMP 1704067199  // 2023-12-31
+
 typedef struct milksad
 {
   u32 purpose;
@@ -296,8 +300,8 @@ int module_hash_decode (MAYBE_UNUSED const hashconfig_t *hashconfig, MAYBE_UNUSE
   const u8 *timestamp_pos = (const u8 *) line_buf + token.len[0] + token.len[1] + 1;
   const u32 timestamp = atoi ((const char *) timestamp_pos);
   
-  // Validate timestamp range (2011-01-01 to 2023-12-31)
-  if (timestamp < 1293840000 || timestamp > 1704067199)
+  // Validate timestamp range
+  if (timestamp < MILKSAD_MIN_TIMESTAMP || timestamp > MILKSAD_MAX_TIMESTAMP)
   {
     return (PARSER_HASH_VALUE);
   }

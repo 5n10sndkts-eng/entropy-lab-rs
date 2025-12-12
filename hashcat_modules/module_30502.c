@@ -29,6 +29,10 @@ static const u32   SALT_TYPE      = SALT_TYPE_EMBEDDED;
 static const char *ST_PASS        = "";
 static const char *ST_HASH        = "$trustwallet$49$1668384000$3JvL6Ymt8MVWiCNHC7oWU6nLeHNJKLZGLN";
 
+// Timestamp validation constants (Trust Wallet vulnerability window)
+#define TRUSTWALLET_MIN_TIMESTAMP 1668384000  // 2022-11-14
+#define TRUSTWALLET_MAX_TIMESTAMP 1669247999  // 2022-11-23
+
 typedef struct trustwallet
 {
   u32 purpose;
@@ -296,8 +300,8 @@ int module_hash_decode (MAYBE_UNUSED const hashconfig_t *hashconfig, MAYBE_UNUSE
   const u8 *timestamp_pos = (const u8 *) line_buf + token.len[0] + token.len[1] + 1;
   const u32 timestamp = atoi ((const char *) timestamp_pos);
   
-  // Validate timestamp range (Nov 14-23, 2022)
-  if (timestamp < 1668384000 || timestamp > 1669247999)
+  // Validate timestamp range
+  if (timestamp < TRUSTWALLET_MIN_TIMESTAMP || timestamp > TRUSTWALLET_MAX_TIMESTAMP)
   {
     return (PARSER_HASH_VALUE);
   }

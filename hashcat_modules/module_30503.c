@@ -234,7 +234,9 @@ int module_hash_decode (MAYBE_UNUSED const hashconfig_t *hashconfig, MAYBE_UNUSE
   // Set fake digest
   memcpy (digest, cakewallet->target_hash160, 16);
   
-  // No salt needed (SALT_TYPE_NONE)
+  // Note: SALT_TYPE_NONE means we don't use salt for this module,
+  // but we still need to access the salt structure safely.
+  // Setting salt_len to 0 is safe even with SALT_TYPE_NONE.
   salt->salt_len = 0;
   
   return (PARSER_OK);
