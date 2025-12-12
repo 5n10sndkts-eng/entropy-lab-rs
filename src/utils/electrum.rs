@@ -26,7 +26,8 @@ pub enum ElectrumSeedType {
 /// CRITICAL: This is DIFFERENT from BIP39!
 /// - BIP39 uses salt = "mnemonic" + passphrase
 /// - Electrum uses salt = "electrum" + passphrase
-/// Using the wrong salt produces COMPLETELY DIFFERENT addresses!
+///
+///   Using the wrong salt produces COMPLETELY DIFFERENT addresses!
 pub fn mnemonic_to_seed(mnemonic: &str) -> [u8; 64] {
     mnemonic_to_seed_with_passphrase(mnemonic, "")
 }
@@ -61,8 +62,8 @@ pub fn is_valid_electrum_seed(mnemonic: &str, seed_type: ElectrumSeedType) -> bo
         .join(" ");
 
     // HMAC-SHA512 with key "Seed version"
-    let mut mac = HmacSha512::new_from_slice(b"Seed version")
-        .expect("HMAC key should always be valid");
+    let mut mac =
+        HmacSha512::new_from_slice(b"Seed version").expect("HMAC key should always be valid");
     mac.update(normalized.as_bytes());
     let result = mac.finalize().into_bytes();
 

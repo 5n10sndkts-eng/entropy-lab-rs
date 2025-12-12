@@ -20,10 +20,10 @@
 use bitcoin::secp256k1::{Secp256k1, SecretKey};
 use bitcoin::{Address, CompressedPublicKey, Network, PublicKey};
 use sha2::{Digest, Sha256};
-use std::str::FromStr;
 
 /// Test vector structure for brainwallet verification
 #[derive(Debug)]
+#[allow(dead_code)]
 struct BrainwalletTestVector {
     passphrase: &'static str,
     description: &'static str,
@@ -103,7 +103,10 @@ fn test_sha256_private_key_derivation() {
     println!("\n=== Test 1: SHA256 Private Key Derivation ===\n");
 
     for vector in get_brainwallet_test_vectors() {
-        println!("Testing: \"{}\" ({})", vector.passphrase, vector.description);
+        println!(
+            "Testing: \"{}\" ({})",
+            vector.passphrase, vector.description
+        );
 
         // Step 1: SHA256(passphrase) → private_key
         let privkey_bytes = Sha256::digest(vector.passphrase.as_bytes());
@@ -146,22 +149,32 @@ fn test_brainwallet_derivation_uncompressed() {
     let public_key = PublicKey::new_uncompressed(public_key_secp);
     let pubkey_bytes = public_key.to_bytes();
     let pubkey_hex = hex::encode(&pubkey_bytes);
-    
+
     println!("  2. Public key (uncompressed):");
     println!("     Length: {} bytes", pubkey_bytes.len());
     println!("     Prefix: 0x{:02x}", pubkey_bytes[0]);
     println!("     Hex: {}...", &pubkey_hex[..40]);
 
     // Verify it's uncompressed (65 bytes starting with 0x04)
-    assert_eq!(pubkey_bytes.len(), 65, "Uncompressed pubkey should be 65 bytes");
-    assert_eq!(pubkey_bytes[0], 0x04, "Uncompressed pubkey should start with 0x04");
+    assert_eq!(
+        pubkey_bytes.len(),
+        65,
+        "Uncompressed pubkey should be 65 bytes"
+    );
+    assert_eq!(
+        pubkey_bytes[0], 0x04,
+        "Uncompressed pubkey should start with 0x04"
+    );
 
     // Step 4: Generate P2PKH address (uncompressed)
     let address = Address::p2pkh(public_key, Network::Bitcoin);
     println!("  3. P2PKH Address (uncompressed): {}", address);
 
     // Verify address format
-    assert!(address.to_string().starts_with('1'), "P2PKH address should start with 1");
+    assert!(
+        address.to_string().starts_with('1'),
+        "P2PKH address should start with 1"
+    );
     println!("  ✓ Complete derivation successful\n");
 }
 
@@ -187,15 +200,19 @@ fn test_brainwallet_derivation_compressed() {
     let public_key_secp = secret_key.public_key(&secp);
     let compressed = CompressedPublicKey(public_key_secp);
     let pubkey_bytes = compressed.to_bytes();
-    let pubkey_hex = hex::encode(&pubkey_bytes);
-    
+    let pubkey_hex = hex::encode(pubkey_bytes);
+
     println!("  2. Public key (compressed):");
     println!("     Length: {} bytes", pubkey_bytes.len());
     println!("     Prefix: 0x{:02x}", pubkey_bytes[0]);
     println!("     Hex: {}", pubkey_hex);
 
     // Verify it's compressed (33 bytes starting with 0x02 or 0x03)
-    assert_eq!(pubkey_bytes.len(), 33, "Compressed pubkey should be 33 bytes");
+    assert_eq!(
+        pubkey_bytes.len(),
+        33,
+        "Compressed pubkey should be 33 bytes"
+    );
     assert!(
         pubkey_bytes[0] == 0x02 || pubkey_bytes[0] == 0x03,
         "Compressed pubkey should start with 0x02 or 0x03"
@@ -211,9 +228,15 @@ fn test_brainwallet_derivation_compressed() {
     println!("  4. P2WPKH Address (SegWit): {}", address_p2wpkh);
 
     // Verify address formats
-    assert!(address_p2pkh.to_string().starts_with('1'), "P2PKH should start with 1");
-    assert!(address_p2wpkh.to_string().starts_with("bc1q"), "P2WPKH should start with bc1q");
-    
+    assert!(
+        address_p2pkh.to_string().starts_with('1'),
+        "P2PKH should start with 1"
+    );
+    assert!(
+        address_p2wpkh.to_string().starts_with("bc1q"),
+        "P2WPKH should start with bc1q"
+    );
+
     println!("  ✓ Complete derivation successful\n");
 }
 
@@ -226,21 +249,22 @@ fn test_secp256k1_generator_point() {
 
     // Test with private key = 1 to get the generator point G
     let privkey_one = SecretKey::from_slice(&[
-        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1,
-    ]).expect("Failed to create private key");
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 1,
+    ])
+    .expect("Failed to create private key");
 
     let public_key_secp = privkey_one.public_key(&secp);
     let compressed = CompressedPublicKey(public_key_secp);
     let pubkey_bytes = compressed.to_bytes();
-    let pubkey_hex = hex::encode(&pubkey_bytes);
+    let pubkey_hex = hex::encode(pubkey_bytes);
 
     println!("  Private key: 0x0000...0001");
     println!("  Public key (compressed): {}", pubkey_hex);
 
     // Verify against known secp256k1 generator point G (compressed)
     let expected_g = "0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";
-    
+
     println!("  Expected G: {}", expected_g);
     println!("  Got:        {}", pubkey_hex);
 
@@ -248,7 +272,7 @@ fn test_secp256k1_generator_point() {
         pubkey_hex, expected_g,
         "Generator point mismatch - secp256k1 implementation may be incorrect"
     );
-    
+
     println!("  ✓ Generator point matches bitcoin-core/secp256k1\n");
 }
 
@@ -267,21 +291,25 @@ fn test_base58check_encoding() {
     let address = Address::p2pkh(public_key, Network::Bitcoin);
 
     println!("  Address: {}", address);
-    
+
     // Verify Base58Check properties
     let addr_str = address.to_string();
-    
+
     // Should start with '1' for mainnet P2PKH
-    assert!(addr_str.starts_with('1'), "P2PKH mainnet should start with 1");
-    
+    assert!(
+        addr_str.starts_with('1'),
+        "P2PKH mainnet should start with 1"
+    );
+
     // Should not contain Base64 characters or lowercase O, I
     for ch in addr_str.chars() {
         assert!(
             ch.is_ascii_alphanumeric() && ch != '0' && ch != 'O' && ch != 'I' && ch != 'l',
-            "Invalid Base58 character: {}", ch
+            "Invalid Base58 character: {}",
+            ch
         );
     }
-    
+
     // Length should be reasonable (25-34 characters for P2PKH)
     assert!(
         addr_str.len() >= 25 && addr_str.len() <= 34,
@@ -306,29 +334,30 @@ fn test_bech32_encoding() {
     let address = Address::p2wpkh(&compressed, Network::Bitcoin);
 
     println!("  Address: {}", address);
-    
+
     // Verify Bech32 properties
     let addr_str = address.to_string();
-    
+
     // Should start with 'bc1q' for mainnet P2WPKH
-    assert!(addr_str.starts_with("bc1q"), "P2WPKH mainnet should start with bc1q");
-    
+    assert!(
+        addr_str.starts_with("bc1q"),
+        "P2WPKH mainnet should start with bc1q"
+    );
+
     // Should be all lowercase
     assert!(
         addr_str.chars().all(|c| !c.is_ascii_uppercase()),
         "Bech32 addresses should be lowercase"
     );
-    
+
     // Should be 42 characters for P2WPKH
     assert_eq!(addr_str.len(), 42, "P2WPKH address should be 42 characters");
-    
+
     // Should only contain valid bech32 characters
     let valid_chars = "qpzry9x8gf2tvdw0s3jn54khce6mua7l";
-    for ch in addr_str.chars().skip(3) { // Skip "bc1" prefix
-        assert!(
-            valid_chars.contains(ch),
-            "Invalid Bech32 character: {}", ch
-        );
+    for ch in addr_str.chars().skip(3) {
+        // Skip "bc1" prefix
+        assert!(valid_chars.contains(ch), "Invalid Bech32 character: {}", ch);
     }
 
     println!("  ✓ Valid Bech32 encoding\n");
@@ -415,7 +444,7 @@ fn test_known_brainwallet_addresses() {
 
     for (passphrase, expected_uncompressed) in test_cases {
         println!("  Testing: \"{}\"", passphrase);
-        
+
         let privkey_bytes = Sha256::digest(passphrase.as_bytes());
         let secret_key = SecretKey::from_slice(&privkey_bytes).expect("Invalid private key");
         let public_key_secp = secret_key.public_key(&secp);
@@ -457,10 +486,16 @@ fn test_compressed_uncompressed_consistency() {
     let compressed_bytes = compressed.to_bytes();
 
     println!("  Passphrase: \"{}\"", passphrase);
-    println!("  Uncompressed pubkey: {} bytes (0x{:02x}...)", 
-             uncompressed_bytes.len(), uncompressed_bytes[0]);
-    println!("  Compressed pubkey:   {} bytes (0x{:02x}...)", 
-             compressed_bytes.len(), compressed_bytes[0]);
+    println!(
+        "  Uncompressed pubkey: {} bytes (0x{:02x}...)",
+        uncompressed_bytes.len(),
+        uncompressed_bytes[0]
+    );
+    println!(
+        "  Compressed pubkey:   {} bytes (0x{:02x}...)",
+        compressed_bytes.len(),
+        compressed_bytes[0]
+    );
 
     // Verify the x-coordinate matches
     let uncompressed_x = &uncompressed_bytes[1..33];
@@ -477,7 +512,7 @@ fn test_compressed_uncompressed_consistency() {
     let addr_uncompressed = Address::p2pkh(public_key_uncompressed, Network::Bitcoin);
     let addr_compressed = Address::p2pkh(
         PublicKey::from_slice(&compressed_bytes).unwrap(),
-        Network::Bitcoin
+        Network::Bitcoin,
     );
 
     println!("  Uncompressed P2PKH: {}", addr_uncompressed);

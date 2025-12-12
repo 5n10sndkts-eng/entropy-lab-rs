@@ -36,12 +36,7 @@ impl KernelProfile {
     /// Get the list of OpenCL files needed for this profile
     fn get_files(&self) -> Vec<&'static str> {
         match self {
-            KernelProfile::Minimal => vec![
-                "common",
-                "ripemd",
-                "sha2",
-                "sha512",
-            ],
+            KernelProfile::Minimal => vec!["common", "ripemd", "sha2", "sha512"],
             KernelProfile::MobileSensor => vec![
                 "common",
                 "sha2",
@@ -156,7 +151,10 @@ impl GpuSolver {
     /// Create a new GPU solver with a specific kernel profile
     /// This allows reducing constant memory usage for GPUs with limited constant memory
     pub fn new_with_profile(profile: KernelProfile) -> ocl::Result<Self> {
-        info!("[GPU] Initializing GPU solver with profile: {:?}...", profile);
+        info!(
+            "[GPU] Initializing GPU solver with profile: {:?}...",
+            profile
+        );
 
         let files = profile.get_files();
 
@@ -225,7 +223,10 @@ impl GpuSolver {
                 32 // Safe default
             };
 
-        info!("[GPU] ✓ GPU solver initialized successfully with profile: {:?}", profile);
+        info!(
+            "[GPU] ✓ GPU solver initialized successfully with profile: {:?}",
+            profile
+        );
         info!("[GPU] Device: {:?}", device.name()?);
         info!("[GPU] Max work group size: {}", max_work_group_size);
         info!(
