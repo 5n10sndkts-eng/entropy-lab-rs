@@ -26,7 +26,8 @@ pub enum ElectrumSeedType {
 /// CRITICAL: This is DIFFERENT from BIP39!
 /// - BIP39 uses salt = "mnemonic" + passphrase
 /// - Electrum uses salt = "electrum" + passphrase
-/// Using the wrong salt produces COMPLETELY DIFFERENT addresses!
+///
+///   Using the wrong salt produces COMPLETELY DIFFERENT addresses!
 pub fn mnemonic_to_seed(mnemonic: &str) -> [u8; 64] {
     mnemonic_to_seed_with_passphrase(mnemonic, "")
 }

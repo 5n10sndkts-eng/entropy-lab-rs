@@ -45,7 +45,7 @@ impl Default for HashType {
 fn hash160(data: &[u8]) -> [u8; 20] {
     let sha256_result = Sha256::digest(data);
     let mut ripemd = Ripemd160::new();
-    ripemd.update(&sha256_result);
+    ripemd.update(sha256_result);
     ripemd.finalize().into()
 }
 
@@ -262,7 +262,7 @@ mod tests {
 
         // Verify private key matches SHA256("hashcat")
         assert_eq!(
-            hex::encode(&privkey),
+            hex::encode(privkey),
             "127e6fbfe24a750e72930c220a8e138275656b8e5d8f48a98c3c92df2caba935"
         );
 
@@ -278,8 +278,8 @@ mod tests {
 
         // Print all values for cross-project verification
         println!("=== Brainwallet Test Vector: 'hashcat' ===");
-        println!("Private key: {}", hex::encode(&privkey));
-        println!("Compressed pubkey: {}", hex::encode(&compressed_bytes));
+        println!("Private key: {}", hex::encode(privkey));
+        println!("Compressed pubkey: {}", hex::encode(compressed_bytes));
 
         // P2PKH (uncompressed) - uses 65-byte uncompressed public key
         let uncompressed_hash160 = hash160(&uncompressed_bytes);
@@ -323,7 +323,7 @@ mod tests {
         for (passphrase, expected_privkey) in test_cases {
             let privkey = derive_key(passphrase, HashType::Sha256 { iterations: 1 });
             assert_eq!(
-                hex::encode(&privkey),
+                hex::encode(privkey),
                 expected_privkey,
                 "Private key mismatch for passphrase: '{}'",
                 passphrase

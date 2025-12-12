@@ -17,7 +17,7 @@ use sha2::{Digest, Sha256};
 fn hash160(data: &[u8]) -> [u8; 20] {
     let sha256_result = Sha256::digest(data);
     let mut ripemd = Ripemd160::new();
-    ripemd.update(&sha256_result);
+    ripemd.update(sha256_result);
     ripemd.finalize().into()
 }
 
@@ -42,7 +42,7 @@ fn test_hashcat_passphrase_sha256() {
     let expected_privkey = "127e6fbfe24a750e72930c220a8e138275656b8e5d8f48a98c3c92df2caba935";
     
     let privkey_bytes = Sha256::digest(passphrase.as_bytes());
-    let privkey_hex = hex::encode(&privkey_bytes);
+    let privkey_hex = hex::encode(privkey_bytes);
     
     println!("  Passphrase: \"{}\"", passphrase);
     println!("  Expected private key: {}", expected_privkey);
@@ -65,7 +65,7 @@ fn test_hashcat_passphrase_uncompressed() {
     
     // Step 1: SHA256(passphrase) -> private key
     let privkey_bytes = Sha256::digest(passphrase.as_bytes());
-    let privkey_hex = hex::encode(&privkey_bytes);
+    let privkey_hex = hex::encode(privkey_bytes);
     println!("  1. Private key (SHA256): {}", privkey_hex);
     
     // Expected from the prompt
@@ -80,7 +80,7 @@ fn test_hashcat_passphrase_uncompressed() {
     
     // Step 3: Uncompressed public key (65 bytes: 0x04 || x || y)
     let uncompressed_bytes = public_key_secp.serialize_uncompressed();
-    let pubkey_hex = hex::encode(&uncompressed_bytes);
+    let pubkey_hex = hex::encode(uncompressed_bytes);
     
     println!("  2. Public key (uncompressed):");
     println!("     Length: {} bytes", uncompressed_bytes.len());
@@ -92,7 +92,7 @@ fn test_hashcat_passphrase_uncompressed() {
     
     // Step 4: Hash160 = RIPEMD160(SHA256(pubkey))
     let hash160_value = hash160(&uncompressed_bytes);
-    let hash160_hex = hex::encode(&hash160_value);
+    let hash160_hex = hex::encode(hash160_value);
     println!("  3. Hash160: {}", hash160_hex);
     
     // Step 5: Generate P2PKH address (uncompressed)
@@ -130,7 +130,7 @@ fn test_hashcat_passphrase_compressed() {
     
     // Step 1: SHA256(passphrase) -> private key
     let privkey_bytes = Sha256::digest(passphrase.as_bytes());
-    let privkey_hex = hex::encode(&privkey_bytes);
+    let privkey_hex = hex::encode(privkey_bytes);
     println!("  1. Private key (SHA256): {}", privkey_hex);
     
     // Expected from the prompt
@@ -146,7 +146,7 @@ fn test_hashcat_passphrase_compressed() {
     
     // Step 3: Compressed public key (33 bytes: 0x02/0x03 || x)
     let compressed_bytes = compressed.to_bytes();
-    let pubkey_hex = hex::encode(&compressed_bytes);
+    let pubkey_hex = hex::encode(compressed_bytes);
     
     println!("  2. Public key (compressed):");
     println!("     Length: {} bytes", compressed_bytes.len());
@@ -161,7 +161,7 @@ fn test_hashcat_passphrase_compressed() {
     
     // Step 4: Hash160 = RIPEMD160(SHA256(pubkey))
     let hash160_value = hash160(&compressed_bytes);
-    let hash160_hex = hex::encode(&hash160_value);
+    let hash160_hex = hex::encode(hash160_value);
     println!("  3. Hash160: {}", hash160_hex);
     
     // Step 5: Generate addresses
@@ -205,7 +205,7 @@ fn test_hashcat_passphrase_all_formats() {
     
     // Derive private key
     let privkey_bytes = Sha256::digest(passphrase.as_bytes());
-    let privkey_hex = hex::encode(&privkey_bytes);
+    let privkey_hex = hex::encode(privkey_bytes);
     
     // Generate keys
     let secret_key = SecretKey::from_slice(&privkey_bytes).expect("Invalid private key");
@@ -230,8 +230,8 @@ fn test_hashcat_passphrase_all_formats() {
     println!("  SHA256('hashcat'): {}", privkey_hex);
     println!();
     println!("Public Keys:");
-    println!("  Uncompressed (65): {}", hex::encode(&uncompressed_bytes));
-    println!("  Compressed   (33): {}", hex::encode(&compressed_bytes));
+    println!("  Uncompressed (65): {}", hex::encode(uncompressed_bytes));
+    println!("  Compressed   (33): {}", hex::encode(compressed_bytes));
     println!();
     println!("Addresses:");
     println!("  P2PKH (uncompressed):  {}", address_uncompressed);
@@ -240,8 +240,8 @@ fn test_hashcat_passphrase_all_formats() {
     println!("  P2WPKH:                {}", address_p2wpkh);
     println!();
     println!("Hash160 Values:");
-    println!("  Uncompressed: {}", hex::encode(&uncompressed_hash160));
-    println!("  Compressed:   {}", hex::encode(&hash160(&compressed_bytes)));
+    println!("  Uncompressed: {}", hex::encode(uncompressed_hash160));
+    println!("  Compressed:   {}", hex::encode(hash160(&compressed_bytes)));
     println!();
     // Hashcat Module Test Vectors:
     // Module 01337 uses $bitcoin$ prefix for uncompressed public keys
@@ -293,7 +293,7 @@ fn test_additional_brainwallet_passphrases() {
         
         // Derive
         let privkey_bytes = Sha256::digest(passphrase.as_bytes());
-        let privkey_hex = hex::encode(&privkey_bytes);
+        let privkey_hex = hex::encode(privkey_bytes);
         
         let secret_key = SecretKey::from_slice(&privkey_bytes).expect("Invalid private key from passphrase");
         let public_key_secp = secret_key.public_key(&secp);
@@ -305,7 +305,7 @@ fn test_additional_brainwallet_passphrases() {
         let address_p2wpkh = Address::p2wpkh(&compressed, network);
         
         println!("  Private key: {}", privkey_hex);
-        println!("  Compressed pubkey: {}", hex::encode(&compressed_bytes));
+        println!("  Compressed pubkey: {}", hex::encode(compressed_bytes));
         println!("  P2PKH:  {}", address_p2pkh);
         println!("  P2WPKH: {}", address_p2wpkh);
         println!();

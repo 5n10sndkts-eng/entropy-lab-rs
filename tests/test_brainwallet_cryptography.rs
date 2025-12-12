@@ -20,10 +20,10 @@
 use bitcoin::secp256k1::{Secp256k1, SecretKey};
 use bitcoin::{Address, CompressedPublicKey, Network, PublicKey};
 use sha2::{Digest, Sha256};
-use std::str::FromStr;
 
 /// Test vector structure for brainwallet verification
 #[derive(Debug)]
+#[allow(dead_code)]
 struct BrainwalletTestVector {
     passphrase: &'static str,
     description: &'static str,
@@ -187,7 +187,7 @@ fn test_brainwallet_derivation_compressed() {
     let public_key_secp = secret_key.public_key(&secp);
     let compressed = CompressedPublicKey(public_key_secp);
     let pubkey_bytes = compressed.to_bytes();
-    let pubkey_hex = hex::encode(&pubkey_bytes);
+    let pubkey_hex = hex::encode(pubkey_bytes);
     
     println!("  2. Public key (compressed):");
     println!("     Length: {} bytes", pubkey_bytes.len());
@@ -233,7 +233,7 @@ fn test_secp256k1_generator_point() {
     let public_key_secp = privkey_one.public_key(&secp);
     let compressed = CompressedPublicKey(public_key_secp);
     let pubkey_bytes = compressed.to_bytes();
-    let pubkey_hex = hex::encode(&pubkey_bytes);
+    let pubkey_hex = hex::encode(pubkey_bytes);
 
     println!("  Private key: 0x0000...0001");
     println!("  Public key (compressed): {}", pubkey_hex);

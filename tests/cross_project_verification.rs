@@ -14,7 +14,7 @@
 use bip39::Mnemonic;
 use bitcoin::bip32::{DerivationPath, Xpriv};
 use bitcoin::secp256k1::{PublicKey, Secp256k1, SecretKey};
-use bitcoin::{Address, CompressedPublicKey, Network, PrivateKey};
+use bitcoin::{Address, CompressedPublicKey, Network};
 use ripemd::Ripemd160;
 use sha2::{Digest, Sha256};
 use std::str::FromStr;
@@ -46,18 +46,18 @@ fn test_p2sh_p2wpkh_step_by_step() {
     let compressed_pubkey = pubkey.serialize();
     println!("Step 1 - Compressed pubkey: {}", hex::encode(compressed_pubkey));
     assert_eq!(
-        hex::encode(&compressed_pubkey),
+        hex::encode(compressed_pubkey),
         "0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798"
     );
 
     // Step 2: Hash160 the public key
-    let sha256_pubkey = Sha256::digest(&compressed_pubkey);
+    let sha256_pubkey = Sha256::digest(compressed_pubkey);
     let mut ripemd = Ripemd160::new();
-    ripemd.update(&sha256_pubkey);
+    ripemd.update(sha256_pubkey);
     let keyhash: [u8; 20] = ripemd.finalize().into();
     println!("Step 2 - keyhash (Hash160 of pubkey): {}", hex::encode(keyhash));
     assert_eq!(
-        hex::encode(&keyhash),
+        hex::encode(keyhash),
         "751e76e8199196d454941c45d1b3a323f1433bd6"
     );
 
@@ -75,11 +75,11 @@ fn test_p2sh_p2wpkh_step_by_step() {
     // Step 4: Hash160 the redeemScript
     let sha256_script = Sha256::digest(&redeem_script);
     let mut ripemd2 = Ripemd160::new();
-    ripemd2.update(&sha256_script);
+    ripemd2.update(sha256_script);
     let script_hash: [u8; 20] = ripemd2.finalize().into();
     println!("Step 4 - scriptHash (Hash160 of redeemScript): {}", hex::encode(script_hash));
     assert_eq!(
-        hex::encode(&script_hash),
+        hex::encode(script_hash),
         "bcfeb728b584253d5f3f70bcb780e9ef218a68f4"
     );
 
@@ -162,11 +162,12 @@ fn test_bip49_derivation_path() {
 fn hash160(data: &[u8]) -> [u8; 20] {
     let sha256_result = Sha256::digest(data);
     let mut ripemd = Ripemd160::new();
-    ripemd.update(&sha256_result);
+    ripemd.update(sha256_result);
     ripemd.finalize().into()
 }
 
 /// Generate P2SH-P2WPKH address from compressed pubkey
+#[allow(dead_code)]
 fn pubkey_to_p2sh_p2wpkh(pubkey: &[u8; 33]) -> String {
     // Step 1: Hash160 of compressed pubkey
     let pubkey_hash = hash160(pubkey);
@@ -203,7 +204,7 @@ fn test_brainwallet_hashcat_passphrase() {
 
     // Verify SHA256("hashcat")
     assert_eq!(
-        hex::encode(&privkey),
+        hex::encode(privkey),
         "127e6fbfe24a750e72930c220a8e138275656b8e5d8f48a98c3c92df2caba935"
     );
 
@@ -216,7 +217,7 @@ fn test_brainwallet_hashcat_passphrase() {
     let compressed = pubkey.serialize();
 
     println!("Uncompressed pubkey: {}...", hex::encode(&uncompressed[..33]));
-    println!("Compressed pubkey: {}", hex::encode(&compressed));
+    println!("Compressed pubkey: {}", hex::encode(compressed));
 
     // P2PKH (uncompressed) - "1" prefix
     let uncompressed_hash160 = hash160(&uncompressed);
@@ -277,7 +278,7 @@ fn test_brainwallet_test_vectors() {
 
     for (passphrase, expected_privkey) in test_cases {
         let privkey: [u8; 32] = Sha256::digest(passphrase.as_bytes()).into();
-        let privkey_hex = hex::encode(&privkey);
+        let privkey_hex = hex::encode(privkey);
 
         println!("Passphrase: \"{}\"", passphrase);
         println!("  Expected: {}", expected_privkey);
@@ -361,6 +362,7 @@ pub enum ElectrumSeedType {
 }
 
 /// Validate Electrum seed version using HMAC-SHA512
+#[allow(dead_code)]
 fn is_valid_electrum_seed(mnemonic: &str, seed_type: ElectrumSeedType) -> bool {
     use hmac::{Hmac, Mac};
     use sha2::Sha512;
@@ -584,7 +586,7 @@ fn test_minstd_rand0_lcg() {
     let mut rng = MinstdRand0::new(1);
 
     // First few outputs from seed 1
-    let expected = vec![16807u32, 282475249, 1622650073, 984943658, 1144108930];
+    let expected = [16807u32, 282475249, 1622650073, 984943658, 1144108930];
 
     println!("Seed: 1");
     for (i, &exp) in expected.iter().enumerate() {
@@ -659,29 +661,29 @@ fn test_print_derivation_reference() {
     println!("DERIVATION PATHS BY STANDARD");
     println!("{}", "=".repeat(80));
     println!(
-        "{:<8} | {:<22} | {:<12} | {}",
-        "BIP", "Path", "Address Type", "Notes"
+        "{:<8} | {:<22} | {:<12} | Notes",
+        "BIP", "Path", "Address Type"
     );
     println!("{}", "-".repeat(80));
     println!(
-        "{:<8} | {:<22} | {:<12} | {}",
-        "BIP44", "m/44'/0'/0'/0/0", "P2PKH (1)", "Legacy, most compatible"
+        "{:<8} | {:<22} | {:<12} | Legacy, most compatible",
+        "BIP44", "m/44'/0'/0'/0/0", "P2PKH (1)"
     );
     println!(
-        "{:<8} | {:<22} | {:<12} | {}",
-        "BIP49", "m/49'/0'/0'/0/0", "P2SH (3)", "SegWit wrapped, Research #13"
+        "{:<8} | {:<22} | {:<12} | SegWit wrapped, Research #13",
+        "BIP49", "m/49'/0'/0'/0/0", "P2SH (3)"
     );
     println!(
-        "{:<8} | {:<22} | {:<12} | {}",
-        "BIP84", "m/84'/0'/0'/0/0", "P2WPKH(bc1q)", "Native SegWit"
+        "{:<8} | {:<22} | {:<12} | Native SegWit",
+        "BIP84", "m/84'/0'/0'/0/0", "P2WPKH(bc1q)"
     );
     println!(
-        "{:<8} | {:<22} | {:<12} | {}",
-        "BIP86", "m/86'/0'/0'/0/0", "P2TR (bc1p)", "Taproot"
+        "{:<8} | {:<22} | {:<12} | Taproot",
+        "BIP86", "m/86'/0'/0'/0/0", "P2TR (bc1p)"
     );
     println!(
-        "{:<8} | {:<22} | {:<12} | {}",
-        "Electrum", "m/0'/0/0", "Varies", "Cake Wallet uses this"
+        "{:<8} | {:<22} | {:<12} | Cake Wallet uses this",
+        "Electrum", "m/0'/0/0", "Varies"
     );
     println!("{}", "=".repeat(80));
 }
