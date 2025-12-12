@@ -128,6 +128,18 @@ enum Commands {
         #[arg(long)]
         end: Option<u32>,
     },
+    /// Scan for Randstorm/BitcoinJS vulnerability (JavaScript Math.random() 2011-2015)
+    /// Affects: Blockchain.info, BitAddress.org, CoinPunk, BrainWallet.org
+    /// Impact: 1.4M+ BTC potentially at risk (~$1 billion USD)
+    /// IMPLEMENTATION STATUS: Foundation / MVP (V8 MWC1616 only)
+    Randstorm {
+        #[arg(long, help = "Target address to search for")]
+        target: Option<String>,
+        #[arg(long, help = "Start PRNG state (default: 0)")]
+        start: Option<u32>,
+        #[arg(long, help = "End PRNG state (default: 1000000)")]
+        end: Option<u32>,
+    },
 }
 
 const DEFAULT_RPC_URL: &str = "http://127.0.0.1:8332";
@@ -294,6 +306,10 @@ fn main() -> Result<()> {
             let start_ts = start.unwrap_or(1293840000); // 2011
             let end_ts = end.unwrap_or(1735689600); // 2025
             scans::trust_wallet_lcg::run(&target, start_ts, end_ts)?;
+        }
+        Commands::Randstorm { target, start, end } => {
+            info!("Running Randstorm/BitcoinJS Vulnerability Scanner...");
+            scans::randstorm::run(target, start, end)?;
         }
     }
 

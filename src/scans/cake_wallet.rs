@@ -94,7 +94,7 @@ fn run_gpu(solver: crate::scans::gpu_solver::GpuSolver, max_entropy: u32) -> Res
 }
 
 fn run_cpu(max_entropy: u32) -> Result<()> {
-    use crate::utils::electrum;
+    use crate::utils::electrum::{self, ElectrumSeedType};
     use bip39::Mnemonic;
     use bitcoin::bip32::{DerivationPath, Xpriv};
     use bitcoin::secp256k1::Secp256k1;
@@ -110,6 +110,10 @@ fn run_cpu(max_entropy: u32) -> Result<()> {
     let path = DerivationPath::from_str("m/0'/0/0")?;
 
     info!("Starting CPU scan (this may take a while)...");
+    info!("Electrum seed validation: ENABLED (skipping invalid seeds)");
+
+    let mut valid_seeds_found = 0u32;
+    let mut invalid_seeds_skipped = 0u32;
 
     for i in 0..max_entropy {
         // Create deterministic entropy from seed index
@@ -124,6 +128,16 @@ fn run_cpu(max_entropy: u32) -> Result<()> {
         // Note: We assume the vulnerability resulted in BIP39 words, but derived as Electrum.
         let mnemonic = Mnemonic::from_entropy(&entropy_bytes)?;
         let mnemonic_str = mnemonic.to_string();
+
+        // CRITICAL FIX: Validate Electrum seed before processing
+        // Electrum seeds must have valid version prefix (only ~1/256 random mnemonics are valid)
+        // Cake Wallet uses Standard Electrum seeds
+        if !electrum::is_valid_electrum_seed(&mnemonic_str, ElectrumSeedType::Standard) {
+            invalid_seeds_skipped += 1;
+            continue; // Skip invalid Electrum seeds
+        }
+
+        valid_seeds_found += 1;
 
         // Electrum Seed Derivation
         let seed_val = electrum::mnemonic_to_seed(&mnemonic_str);
@@ -146,15 +160,26 @@ fn run_cpu(max_entropy: u32) -> Result<()> {
 
         if (i + 1) % 1000 == 0 {
             info!(
-                "Progress: {}/{} ({:.1}%)",
+                "Progress: {}/{} ({:.1}%) | Valid: {} | Invalid skipped: {}",
                 i + 1,
                 max_entropy,
-                100.0 * (i + 1) as f64 / max_entropy as f64
+                100.0 * (i + 1) as f64 / max_entropy as f64,
+                valid_seeds_found,
+                invalid_seeds_skipped
             );
         }
     }
 
     info!("CPU scan complete.");
+    info!("Total seeds checked: {}", max_entropy);
+    info!("Valid Electrum seeds found: {} ({:.2}%)",
+        valid_seeds_found,
+        100.0 * valid_seeds_found as f64 / max_entropy as f64
+    );
+    info!("Invalid seeds skipped: {} ({:.2}%)",
+        invalid_seeds_skipped,
+        100.0 * invalid_seeds_skipped as f64 / max_entropy as f64
+    );
     Ok(())
 }
 
