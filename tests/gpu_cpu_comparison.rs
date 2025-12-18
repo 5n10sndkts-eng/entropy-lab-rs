@@ -49,6 +49,7 @@ mod gpu_cpu_tests {
     }
 
     #[test]
+    #[cfg(feature = "gpu")]
     fn test_gpu_cpu_match_basic_seeds() {
         println!("\n=== GPU vs CPU Address Comparison Test ===\n");
         println!("Testing 5 test seeds to validate GPU kernel byte order fix\n");
@@ -123,6 +124,7 @@ mod gpu_cpu_tests {
     }
 
     #[test]
+    #[cfg(feature = "gpu")]
     fn test_gpu_cpu_match_random_seeds() {
         println!("\n=== GPU vs CPU Random Seeds Test ===\n");
         println!("Testing 20 random seeds for comprehensive validation\n");
@@ -180,6 +182,7 @@ mod gpu_cpu_tests {
     }
 
     #[test]
+    #[cfg(feature = "gpu")]
     fn test_gpu_batch_processing() {
         println!("\n=== GPU Batch Processing Test ===\n");
 

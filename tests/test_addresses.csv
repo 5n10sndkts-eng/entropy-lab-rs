@@ -1,0 +1,8 @@
+# Test Bitcoin addresses for Randstorm scanner
+# Format: one address per line
+# Comments (lines starting with #) are ignored
+
+# Test P2PKH addresses  
+1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa
+1BvBMSEYstWetqTFn5Au4m4GFg7xJaNVN2
+1HLoD9E4SDFFPDiYfNYnkBLQ85Y51J3Zb1

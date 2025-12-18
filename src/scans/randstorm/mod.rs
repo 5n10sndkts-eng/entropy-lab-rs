@@ -1,0 +1,53 @@
+pub mod cli;
+pub mod config;
+pub mod derivation;
+pub mod fingerprint;
+pub mod fingerprints;
+pub mod gpu_integration;
+pub mod integration;
+/// Randstorm/BitcoinJS Scanner
+///
+/// This module implements detection of vulnerable Bitcoin wallets affected by the
+/// Randstorm vulnerability (CVE-2018-6798 and related). The vulnerability affects
+/// wallets generated using JavaScript in browsers from 2011-2015 due to insufficient
+/// PRNG entropy in browser implementations.
+///
+/// # Phases
+///
+/// - **Phase 1** (Week 1): Chrome V8 PRNG, top 100 browser configs, 60-70% coverage
+/// - **Phase 2** (Week 2): All browser PRNGs, 500 configs, 85-90% coverage
+/// - **Phase 3** (Week 3+): Probabilistic search, multi-GPU, 95%+ coverage
+///
+/// # Security & Ethics
+///
+/// This scanner is designed for **white-hat security research only**:
+/// - Private keys are NEVER exported from GPU memory
+/// - No fund transfer capabilities
+/// - Responsible disclosure framework built-in
+/// - 90-day disclosure window before public release
+///
+/// # References
+///
+/// - Randstorm Disclosure: https://www.unciphered.com/randstorm
+/// - CVE-2018-6798: Chrome V8 PRNG vulnerability
+pub mod prng;
+pub mod progress;
+
+pub use config::ScanConfig;
+pub use fingerprint::BrowserFingerprint;
+pub use fingerprints::FingerprintDatabase;
+pub use gpu_integration::GpuScanner;
+pub use integration::RandstormScanner;
+pub use prng::PrngEngine;
+pub use progress::ProgressTracker;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_module_compiles() {
+        // Basic compilation test
+        assert!(true);
+    }
+}

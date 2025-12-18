@@ -1,0 +1,10 @@
+# Test fixture: Mixed valid/invalid addresses
+# TEST-ID: 1.8.1-FIXTURE-002
+# Purpose: Test CSV parsing with invalid entries
+
+1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa
+invalid_address_123
+12cbQLTFMXRnSzktFkuoG3eHoMeFtpTu3S
+# Comment line - should be skipped
+
+1Pji2xSZnKDLqKCp9pYNy7xRYxsKZfHLCx
