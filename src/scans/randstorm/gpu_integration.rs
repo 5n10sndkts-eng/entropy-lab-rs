@@ -22,7 +22,6 @@ pub struct GpuScanner {
     queue: Queue,
     kernel: Kernel,
     device: Device,
-    config: ScanConfig,
     keys_checked: Arc<AtomicU64>,
     running: Arc<AtomicBool>,
 }
@@ -30,7 +29,6 @@ pub struct GpuScanner {
 /// Stub for non-GPU builds
 #[cfg(not(feature = "gpu"))]
 pub struct GpuScanner {
-    config: ScanConfig,
     keys_checked: Arc<AtomicU64>,
     running: Arc<AtomicBool>,
 }
@@ -55,7 +53,12 @@ pub struct MatchedKey {
 impl GpuScanner {
     /// Initialize GPU scanner with OpenCL
     #[cfg(feature = "gpu")]
-    pub fn new(config: ScanConfig) -> Result<Self> {
+    pub fn new(
+        config: ScanConfig,
+        engine: super::prng::MathRandomEngine,
+        seed_override: Option<u64>,
+        include_uncompressed: bool,
+    ) -> Result<Self> {
         // Select platform and device (following gpu_solver.rs pattern)
         let platform = Platform::default();
         let device = Device::first(platform).context("No OpenCL device found")?;
@@ -110,7 +113,6 @@ impl GpuScanner {
             queue,
             kernel,
             device,
-            config,
             keys_checked: Arc::new(AtomicU64::new(0)),
             running: Arc::new(AtomicBool::new(true)),
         })
@@ -118,7 +120,12 @@ impl GpuScanner {
 
     /// Stub for non-GPU builds
     #[cfg(not(feature = "gpu"))]
-    pub fn new(_config: ScanConfig) -> Result<Self> {
+    pub fn new(
+        _config: ScanConfig,
+        _engine: super::prng::MathRandomEngine,
+        _seed_override: Option<u64>,
+        _include_uncompressed: bool,
+    ) -> Result<Self> {
         anyhow::bail!("GPU support not compiled in. Rebuild with --features gpu")
     }
 
@@ -152,7 +159,7 @@ impl GpuScanner {
     pub fn process_batch(
         &mut self,
         fingerprints: &[BrowserFingerprint],
-        target_addresses: &[Vec<u8>; 20], // Array of 20-byte address hashes
+        target_addresses: &[Vec<u8>], // 20-byte address hashes
         num_targets: u32,
     ) -> Result<GpuBatchResult> {
         let start_time = Instant::now();
@@ -272,31 +279,18 @@ impl GpuScanner {
     }
 
     /// Derive private key from browser fingerprint (CPU implementation for verification)
-    fn derive_key_from_fingerprint(&self, fp: &BrowserFingerprint) -> Result<SecretKey> {
-        use super::prng::{ChromeV8Prng, PrngEngine, SeedComponents};
+    #[allow(dead_code)]
+    fn derive_key_from_fingerprint(
+        &self,
+        fp: &BrowserFingerprint,
+        engine: super::prng::MathRandomEngine,
+        seed_override: Option<u64>,
+    ) -> Result<SecretKey> {
+        use super::prng::bitcoinjs_v013::BitcoinJsV013Prng;
 
-        // Create seed components from fingerprint
-        let seed = SeedComponents {
-            timestamp_ms: fp.timestamp_ms,
-            user_agent: fp.user_agent.clone(),
-            screen_width: fp.screen_width,
-            screen_height: fp.screen_height,
-            color_depth: fp.color_depth,
-            timezone_offset: fp.timezone_offset as i16,
-            language: fp.language.clone(),
-            platform: fp.platform.clone(),
-        };
-
-        // Initialize PRNG with fingerprint
-        let prng = ChromeV8Prng::new();
-        let state = prng.generate_state(&seed);
-
-        // Generate 32 bytes for private key
-        let key_bytes = prng.generate_bytes(&state, 32);
-        let mut key_array = [0u8; 32];
-        key_array.copy_from_slice(&key_bytes[..32]);
-
-        SecretKey::from_slice(&key_array).context("Invalid secret key generated from fingerprint")
+        let key_bytes =
+            BitcoinJsV013Prng::generate_privkey_bytes(fp.timestamp_ms, engine, seed_override);
+        SecretKey::from_slice(&key_bytes).context("Invalid secret key generated from fingerprint")
     }
 
     /// Get total keys checked
@@ -323,8 +317,10 @@ mod tests {
     #[test]
     #[ignore] // Requires OpenCL device
     fn test_gpu_scanner_initialization() {
+        use crate::scans::randstorm::prng::MathRandomEngine;
         let config = ScanConfig::default();
-        let scanner = GpuScanner::new(config);
+        let engine = MathRandomEngine::V8Mwc1616;
+        let scanner = GpuScanner::new(config, engine, None, true);
 
         // Should succeed if OpenCL is available
         if scanner.is_ok() {
@@ -335,8 +331,10 @@ mod tests {
 
     #[test]
     fn test_key_derivation_from_fingerprint() {
+        use crate::scans::randstorm::prng::MathRandomEngine;
         let config = ScanConfig::default();
-        let scanner = GpuScanner::new(config);
+        let engine = MathRandomEngine::V8Mwc1616;
+        let scanner = GpuScanner::new(config, engine, None, true);
 
         if let Ok(scanner) = scanner {
             let fp = BrowserFingerprint {
@@ -350,7 +348,7 @@ mod tests {
                 user_agent: "Mozilla/5.0".to_string(),
             };
 
-            let key = scanner.derive_key_from_fingerprint(&fp);
+            let key = scanner.derive_key_from_fingerprint(&fp, MathRandomEngine::V8Mwc1616, None);
             assert!(key.is_ok());
 
             // Verify key is valid for secp256k1

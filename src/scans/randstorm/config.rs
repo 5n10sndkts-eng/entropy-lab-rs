@@ -2,9 +2,44 @@
 
 use serde::{Deserialize, Serialize};
 
+/// Scan mode determining timestamp interval granularity
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ScanMode {
+    /// Quick scan: ~1000 timestamps per config (~100K total keys, ~1 hour)
+    Quick,
+    /// Standard scan: Hourly intervals (~35K timestamps per config, ~8.6M total keys, ~24 hours)
+    Standard,
+    /// Deep scan: Minutely intervals (~2.1M timestamps per config, ~517M total keys, ~1 week)
+    Deep,
+    /// Exhaustive scan: Per-second intervals (~126M timestamps per config, ~31B total keys, ~1 month)
+    Exhaustive,
+}
+
+impl ScanMode {
+    /// Get timestamp interval in milliseconds for this scan mode
+    pub fn interval_ms(&self) -> u64 {
+        match self {
+            ScanMode::Quick => 126_000_000, // ~35 hour intervals (1000 timestamps total)
+            ScanMode::Standard => 3_600_000, // 1 hour
+            ScanMode::Deep => 60_000,       // 1 minute
+            ScanMode::Exhaustive => 1_000,  // 1 second
+        }
+    }
+}
+
+impl Default for ScanMode {
+    fn default() -> Self {
+        ScanMode::Standard
+    }
+}
+
 /// Configuration for Randstorm vulnerability scanner
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ScanConfig {
+    /// Scan mode controlling timestamp interval granularity
+    #[serde(default)]
+    pub scan_mode: ScanMode,
+
     /// Maximum batch size for GPU processing
     pub batch_size: Option<usize>,
 
@@ -30,6 +65,7 @@ pub struct ScanConfig {
 impl Default for ScanConfig {
     fn default() -> Self {
         Self {
+            scan_mode: ScanMode::Standard,
             batch_size: None, // Auto-detect from GPU
             use_gpu: true,
             cpu_threads: None, // Auto-detect
@@ -79,5 +115,16 @@ mod tests {
         let config = ScanConfig::chrome_v8_vulnerable_period();
         assert!(config.start_date_ms.is_some());
         assert!(config.end_date_ms.is_some());
+    }
+
+    // TEST-ID: 1.9-UNIT-003
+    // AC: AC-4 (Granular Scan Phases)
+    // PRIORITY: P0
+    #[test]
+    fn test_scan_mode_intervals() {
+        assert_eq!(ScanMode::Quick.interval_ms(), 126_000_000);
+        assert_eq!(ScanMode::Standard.interval_ms(), 3_600_000);
+        assert_eq!(ScanMode::Deep.interval_ms(), 60_000);
+        assert_eq!(ScanMode::Exhaustive.interval_ms(), 1_000);
     }
 }

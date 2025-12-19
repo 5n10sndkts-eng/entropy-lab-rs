@@ -3,7 +3,7 @@
 /// This module replicates the exact vulnerability in BitcoinJS v0.1.3 from 2011-2014.
 /// The bug: `navigator.appVersion < "5"` fails in modern browsers because "5.0" is NOT
 /// less than "5" in string comparison, causing fallback to weak Math.random().
-use super::{BrowserVersion, PrngEngine, PrngState, SeedComponents};
+use super::{BrowserVersion, MathRandomEngine, PrngEngine, PrngState, SeedComponents};
 
 /// ARC4 cipher state (as used in BitcoinJS v0.1.3)
 #[derive(Debug, Clone)]
@@ -47,32 +47,162 @@ impl Arc4 {
     }
 }
 
-/// Weak Math.random() simulation using Chrome V8 MWC1616 (matches 2011-2014 behavior)
+/// Weak Math.random() simulation for multiple historical engines
 #[derive(Debug, Clone)]
 pub struct WeakMathRandom {
+    engine: MathRandomEngine,
+    seed: u64,
     s1: u32,
     s2: u32,
+    xorshift_s0: u64,
+    xorshift_s1: u64,
 }
 
 impl WeakMathRandom {
     /// Create PRNG seeded with timestamp (milliseconds)
-    pub fn from_timestamp(timestamp_ms: u64) -> Self {
-        // Minimal seed mapping: split timestamp into two 32-bit words.
-        // BitcoinJS uses Math.random() after browser init; we model V8's MWC1616
-        // with the timestamp providing both halves of the seed (little-endian split).
-        let s1 = (timestamp_ms & 0xFFFF_FFFF) as u32; // low 32 bits
-        let s2 = (timestamp_ms >> 32) as u32; // high 32 bits
-        Self { s1, s2 }
+    pub fn from_timestamp(
+        engine: MathRandomEngine,
+        timestamp_ms: u64,
+        seed_override: Option<u64>,
+    ) -> Self {
+        let seed = seed_override.unwrap_or(timestamp_ms);
+        // For engines that split into 32-bit parts, derive s1/s2 from seed.
+        let s1 = (seed & 0xFFFF_FFFF) as u32; // low
+        let s2 = (seed >> 32) as u32; // high
+        let (xorshift_s0, xorshift_s1) = if engine == MathRandomEngine::XorShift128Plus {
+            // Use splitmix64 to expand seed into 128 bits
+            fn splitmix64(mut x: u64) -> u64 {
+                x = x.wrapping_add(0x9E3779B97F4A7C15);
+                let mut z = x;
+                z = (z ^ (z >> 30)).wrapping_mul(0xBF58476D1CE4E5B9);
+                z = (z ^ (z >> 27)).wrapping_mul(0x94D049BB133111EB);
+                z ^ (z >> 31)
+            }
+            (
+                splitmix64(seed),
+                splitmix64(seed.wrapping_add(0x9E3779B97F4A7C15)),
+            )
+        } else {
+            (0, 0)
+        };
+        Self {
+            engine,
+            seed,
+            s1,
+            s2,
+            xorshift_s0,
+            xorshift_s1,
+        }
     }
 
     /// Advance MWC1616 state and return next f64 in [0,1)
     pub fn next(&mut self) -> f64 {
-        self.s1 = 18_000_u32.wrapping_mul(self.s1 & 0xFFFF) + (self.s1 >> 16);
-        self.s2 = 30_903_u32.wrapping_mul(self.s2 & 0xFFFF) + (self.s2 >> 16);
-        // JS Math.random() uses 32-bit ops; mask to 32 bits after combining.
-        let combined: u32 = (((self.s1 as u64) << 16) + (self.s2 as u64)) as u32;
-        // Normalize to [0,1): divide by 2^32 (not MAX), matching JS behavior (<1.0).
-        (combined as f64) / 4_294_967_296.0
+        match self.engine {
+            MathRandomEngine::V8Mwc1616 => {
+                self.s1 = 18_000_u32.wrapping_mul(self.s1 & 0xFFFF) + (self.s1 >> 16);
+                self.s2 = 30_903_u32.wrapping_mul(self.s2 & 0xFFFF) + (self.s2 >> 16);
+                let combined: u32 = (((self.s1 as u64) << 16) + (self.s2 as u64)) as u32;
+                (combined as f64) / 4_294_967_296.0 // 2^32
+            }
+            MathRandomEngine::Drand48 | MathRandomEngine::JavaUtil => {
+                // 48-bit LCG
+                const MULT: u64 = 25_214_903_917;
+                const INC: u64 = 11;
+                const MASK: u64 = (1u64 << 48) - 1;
+                self.seed = (self.seed.wrapping_mul(MULT).wrapping_add(INC)) & MASK;
+                (self.seed as f64) / 281_474_976_710_656.0 // 2^48
+            }
+            MathRandomEngine::XorShift128Plus => {
+                // Standard xorshift128+; output 64-bit then scale
+                let mut s1 = self.xorshift_s0;
+                let s0 = self.xorshift_s1;
+                self.xorshift_s0 = s0;
+                s1 ^= s1 << 23;
+                self.xorshift_s1 = s1 ^ s0 ^ (s1 >> 17) ^ (s0 >> 26);
+                let result = self.xorshift_s1.wrapping_add(s0);
+                ((result >> 11) as f64) / (1u64 << 53) as f64
+            }
+            MathRandomEngine::SpiderMonkey => {
+                // SpiderMonkey Math.random historically used xorshift128+ (similar to SM 31/32 era)
+                let mut s1 = self.xorshift_s0;
+                let s0 = self.xorshift_s1;
+                self.xorshift_s0 = s0;
+                s1 ^= s1 << 23;
+                self.xorshift_s1 = s1 ^ s0 ^ (s1 >> 17) ^ (s0 >> 26);
+                let result = self.xorshift_s1.wrapping_add(s0);
+                ((result >> 11) as f64) / (1u64 << 53) as f64
+            }
+            MathRandomEngine::Jsc => {
+                // WebKit JSC historically used a 48-bit LCG with 53-bit output
+                const MULT: u64 = 0x5DEECE66D;
+                const INC: u64 = 0xB;
+                const MASK: u64 = (1u64 << 48) - 1;
+                self.seed = (self.seed.wrapping_mul(MULT).wrapping_add(INC)) & MASK;
+                let high = self.seed >> 22; // 26 bits
+                self.seed = (self.seed.wrapping_mul(MULT).wrapping_add(INC)) & MASK;
+                let low = self.seed >> 21; // 27 bits
+                let val = ((high << 27) | low) as f64;
+                val / ((1u64 << 53) as f64)
+            }
+        }
+    }
+
+    /// Return the upper 16 bits as integer (Math.floor(65536 * Math.random()))
+    pub fn next_u16(&mut self) -> u16 {
+        match self.engine {
+            MathRandomEngine::V8Mwc1616 => {
+                self.s1 = 18_000_u32.wrapping_mul(self.s1 & 0xFFFF) + (self.s1 >> 16);
+                self.s2 = 30_903_u32.wrapping_mul(self.s2 & 0xFFFF) + (self.s2 >> 16);
+                ((((self.s1 as u64) << 16) + (self.s2 as u64)) >> 16) as u16
+            }
+            MathRandomEngine::Drand48 => {
+                const MULT: u64 = 25_214_903_917;
+                const INC: u64 = 11;
+                const MASK: u64 = (1u64 << 48) - 1;
+                self.seed = (self.seed.wrapping_mul(MULT).wrapping_add(INC)) & MASK;
+                (self.seed >> 32) as u16
+            }
+            MathRandomEngine::JavaUtil => {
+                // java.util.Random: next(32) twice to build 53-bit double
+                const MULT: u64 = 0x5DEECE66D;
+                const INC: u64 = 0xB;
+                const MASK: u64 = (1u64 << 48) - 1;
+                // next(32)
+                self.seed = (self.seed.wrapping_mul(MULT).wrapping_add(INC)) & MASK;
+                let high = self.seed >> 16;
+                self.seed = (self.seed.wrapping_mul(MULT).wrapping_add(INC)) & MASK;
+                let low = self.seed >> 16;
+                let bits26 = (high >> 6) & 0x3FF_FFFF;
+                let bits27 = low >> 5;
+                let val = ((bits26 << 27) | bits27) as f64;
+                (val / ((1u64 << 53) as f64) * 65536.0).floor() as u16
+            }
+            MathRandomEngine::XorShift128Plus => {
+                let mut s1 = self.xorshift_s0;
+                let s0 = self.xorshift_s1;
+                self.xorshift_s0 = s0;
+                s1 ^= s1 << 23;
+                self.xorshift_s1 = s1 ^ s0 ^ (s1 >> 17) ^ (s0 >> 26);
+                let result = self.xorshift_s1.wrapping_add(s0);
+                ((result >> 11) & 0xFFFF) as u16
+            }
+            MathRandomEngine::SpiderMonkey => {
+                let mut s1 = self.xorshift_s0;
+                let s0 = self.xorshift_s1;
+                self.xorshift_s0 = s0;
+                s1 ^= s1 << 23;
+                self.xorshift_s1 = s1 ^ s0 ^ (s1 >> 17) ^ (s0 >> 26);
+                let result = self.xorshift_s1.wrapping_add(s0);
+                ((result >> 11) & 0xFFFF) as u16
+            }
+            MathRandomEngine::Jsc => {
+                const MULT: u64 = 0x5DEECE66D;
+                const INC: u64 = 0xB;
+                const MASK: u64 = (1u64 << 48) - 1;
+                self.seed = (self.seed.wrapping_mul(MULT).wrapping_add(INC)) & MASK;
+                (self.seed >> 32) as u16
+            }
+        }
     }
 
     /// Generate random bytes (as BitcoinJS randomBytes does)
@@ -105,30 +235,52 @@ impl BitcoinJsV013Prng {
     }
 
     /// Generate entropy pool exactly as BitcoinJS v0.1.3 does
-    pub fn generate_entropy_pool(timestamp_ms: u64) -> Vec<u8> {
+    pub fn generate_entropy_pool_with_engine(
+        timestamp_ms: u64,
+        engine: MathRandomEngine,
+        seed_override: Option<u64>,
+    ) -> Vec<u8> {
         let mut pool = vec![0u8; 256];
-        let mut prng = WeakMathRandom::from_timestamp(timestamp_ms);
+        let mut prng = WeakMathRandom::from_timestamp(engine, timestamp_ms, seed_override);
+        let mut ptr = 0usize;
 
-        // Seed the pool with timestamp
-        let ts_bytes = timestamp_ms.to_le_bytes();
-        for (i, &byte) in ts_bytes.iter().enumerate() {
-            pool[i] ^= byte;
-        }
-
-        // Fill remaining pool with weak Math.random()
-        // This is the EXACT bug - navigator.appVersion < "5" fails for "5.0"
-        let mut ptr = ts_bytes.len();
+        // STEP 1: Fill pool with weak Math.random() (the bug - no crypto.random)
         while ptr < 256 {
-            let rand16 = (prng.next() * 65536.0).floor() as u16;
-            pool[ptr] ^= (rand16 >> 8) as u8;
+            let rand16 = prng.next_u16();
+            pool[ptr] = (rand16 >> 8) as u8; // high byte
             ptr += 1;
             if ptr < 256 {
-                pool[ptr] ^= (rand16 & 0xFF) as u8;
+                pool[ptr] = (rand16 & 0xFF) as u8; // low byte
                 ptr += 1;
             }
         }
 
+        // STEP 2: XOR timestamp (low 32 bits) into first 4 bytes (rng_seed_time)
+        let ts32 = timestamp_ms as u32;
+        pool[0] ^= (ts32 & 0xFF) as u8;
+        pool[1] ^= ((ts32 >> 8) & 0xFF) as u8;
+        pool[2] ^= ((ts32 >> 16) & 0xFF) as u8;
+        pool[3] ^= ((ts32 >> 24) & 0xFF) as u8;
+
         pool
+    }
+
+    /// Backward-compatible helper using the default V8 MWC engine
+    pub fn generate_entropy_pool(timestamp_ms: u64) -> Vec<u8> {
+        Self::generate_entropy_pool_with_engine(timestamp_ms, MathRandomEngine::V8Mwc1616, None)
+    }
+
+    /// Generate private key bytes with configurable engine/seed
+    pub fn generate_privkey_bytes(
+        timestamp_ms: u64,
+        engine: MathRandomEngine,
+        seed_override: Option<u64>,
+    ) -> [u8; 32] {
+        let pool = Self::generate_entropy_pool_with_engine(timestamp_ms, engine, seed_override);
+        let mut arc4 = Arc4::new(&pool);
+        let mut priv_bytes = [0u8; 32];
+        arc4.fill_bytes(&mut priv_bytes);
+        priv_bytes
     }
 }
 
@@ -182,8 +334,10 @@ mod tests {
 
     #[test]
     fn test_weak_prng_deterministic() {
-        let mut prng1 = WeakMathRandom::from_timestamp(1389781850000);
-        let mut prng2 = WeakMathRandom::from_timestamp(1389781850000);
+        let mut prng1 =
+            WeakMathRandom::from_timestamp(MathRandomEngine::V8Mwc1616, 1389781850000, None);
+        let mut prng2 =
+            WeakMathRandom::from_timestamp(MathRandomEngine::V8Mwc1616, 1389781850000, None);
 
         // Same seed should produce same sequence
         assert_eq!(prng1.next(), prng2.next());
@@ -242,8 +396,8 @@ mod tests {
     #[test]
     fn test_known_test_vector() {
         let timestamp_ms = 1389781850000;
-        let expected_pool32 = "9017749543010000530ca7ece0304e75edd7eb3075cc421024b66e2259f36e99";
-        let expected_priv32 = "b3b097f73c8ecb3d87e788a16cecf397309ec8b4d53460a1110479e8fbb33631";
+        let expected_pool32 = "c31bd379e0304e75edd7eb3075cc421024b66e2259f36e99c27262bba0cf8007";
+        let expected_priv32 = "8459259a725f3e05f777dd419c65d816ab58ea1978132a09779f9cad70cf44b7";
 
         let pool = BitcoinJsV013Prng::generate_entropy_pool(timestamp_ms);
         assert_eq!(hex::encode(&pool[..32]), expected_pool32);

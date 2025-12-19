@@ -9,6 +9,39 @@ pub mod chrome_v8;
 pub use bitcoinjs_v013::{Arc4, BitcoinJsV013Prng, WeakMathRandom};
 pub use chrome_v8::ChromeV8Prng;
 
+/// Math.random() engine variants for historical browsers
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MathRandomEngine {
+    /// Chrome/V8-era MWC1616
+    V8Mwc1616,
+    /// 48-bit LCG (drand48-style)
+    Drand48,
+    /// Java.util.Random-style 48-bit LCG with double output
+    JavaUtil,
+    /// XorShift128+ (used by some browser engines, e.g., later SpiderMonkey/JSC)
+    XorShift128Plus,
+    /// SpiderMonkey-era Math.random (modeled as xorshift128+)
+    SpiderMonkey,
+    /// WebKit JSC-era Math.random (LCG-based)
+    Jsc,
+}
+
+impl MathRandomEngine {
+    pub fn from_str(name: &str) -> Option<Self> {
+        match name.to_lowercase().as_str() {
+            "v8" | "v8_mwc1616" | "chrome" => Some(Self::V8Mwc1616),
+            "drand48" | "lcg48" | "srand48" => Some(Self::Drand48),
+            "java" | "java_util" | "javautil" => Some(Self::JavaUtil),
+            "xorshift" | "xorshift128" | "xorshift128plus" | "spidermonkey" | "jsc" | "safari" => {
+                Some(Self::XorShift128Plus)
+            }
+            "spidermonkey_exact" | "sm" => Some(Self::SpiderMonkey),
+            "jsc_exact" | "webkit" => Some(Self::Jsc),
+            _ => None,
+        }
+    }
+}
+
 /// Browser version range
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BrowserVersion {

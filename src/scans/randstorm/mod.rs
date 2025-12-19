@@ -1,3 +1,4 @@
+pub mod checkpoint;
 pub mod cli;
 pub mod config;
 pub mod derivation;
@@ -32,18 +33,19 @@ pub mod integration;
 /// - CVE-2018-6798: Chrome V8 PRNG vulnerability
 pub mod prng;
 pub mod progress;
+pub mod test_vectors;
 
+pub use checkpoint::ScanCheckpoint;
 pub use config::ScanConfig;
 pub use fingerprint::BrowserFingerprint;
 pub use fingerprints::FingerprintDatabase;
 pub use gpu_integration::GpuScanner;
 pub use integration::RandstormScanner;
-pub use prng::PrngEngine;
+pub use prng::{MathRandomEngine, PrngEngine};
 pub use progress::ProgressTracker;
 
 #[cfg(test)]
 mod tests {
-    use super::*;
 
     #[test]
     fn test_module_compiles() {

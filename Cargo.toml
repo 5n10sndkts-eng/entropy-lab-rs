@@ -22,6 +22,8 @@ hex = "0.4"
 anyhow = "1.0"
 clap = { version = "4.5", features = ["derive", "env"] }
 bip39 = "2.0"
+chrono = "0.4"
+indicatif = "0.17"
 rand_mt = "4.2" # For Trust Wallet MT19937
 rand_chacha = "0.3"
 bloom = "0.3"
@@ -53,9 +55,14 @@ egui = { version = "0.29", optional = true }
 assert_cmd = "2.0"
 predicates = "3.0"
 criterion = "0.5"
+tempfile = "3.8"
 
 [[bench]]
 name = "gpu_optimization_benchmark"
 harness = false
 required-features = ["gpu"]
+
+[[bench]]
+name = "randstorm_streaming"
+harness = false
 

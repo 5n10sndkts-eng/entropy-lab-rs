@@ -128,6 +128,74 @@ enum Commands {
         #[arg(long)]
         end: Option<u32>,
     },
+    /// Randstorm vulnerability scanner - detect wallets with weak browser PRNG entropy
+    ///
+    /// Scans Bitcoin addresses for the Randstorm vulnerability (CVE-2024-XXXX), which affected
+    /// cryptocurrency wallets generated in browsers between 2011-2015 due to weak Math.random()
+    /// entropy. This scanner tests browser fingerprint combinations to identify vulnerable wallets.
+    ///
+    /// Examples:
+    ///   # Scan addresses from CSV file (Phase 1: top 100 configs)
+    ///   entropy-lab-rs randstorm-scan --target-addresses addresses.csv
+    ///
+    ///   # Force CPU-only mode (no GPU)
+    ///   entropy-lab-rs randstorm-scan --target-addresses addresses.csv --cpu
+    ///
+    ///   # Save results to file
+    ///   entropy-lab-rs randstorm-scan --target-addresses addrs.csv --output results.csv
+    ///
+    ///   # Phase 2 scan (top 500 browser configs)
+    ///   entropy-lab-rs randstorm-scan --target-addresses addrs.csv --phase 2
+    RandstormScan {
+        /// Target Bitcoin addresses CSV file (one address per line)
+        #[arg(long, required = true)]
+        target_addresses: std::path::PathBuf,
+        /// Optional start timestamp (ms since epoch) for direct sweep mode
+        #[arg(long)]
+        start_ms: Option<u64>,
+        /// Optional end timestamp (ms since epoch) for direct sweep mode
+        #[arg(long)]
+        end_ms: Option<u64>,
+        /// Interval between timestamps in milliseconds (direct sweep mode)
+        #[arg(long, default_value = "100")]
+        interval_ms: u64,
+
+        /// Scanner phase: 1=top 100 configs, 2=top 500, 3=all configs
+        #[arg(long, default_value = "1")]
+        phase: u8,
+
+        /// Scan mode: quick (1K timestamps), standard (35K), deep (2.1M), exhaustive (126M)
+        #[arg(long, default_value = "standard")]
+        mode: String,
+
+        /// Force GPU acceleration (fails if unavailable)
+        #[arg(long, conflicts_with = "cpu")]
+        gpu: bool,
+
+        /// Force CPU fallback (disables GPU)
+        #[arg(long, conflicts_with = "gpu")]
+        cpu: bool,
+
+        /// Output CSV file (default: stdout)
+        #[arg(long)]
+        output: Option<std::path::PathBuf>,
+
+        /// Math.random engine: v8|drand48|java|xorshift128plus
+        #[arg(long, default_value = "v8")]
+        randstorm_engine: String,
+
+        /// Override Math.random seed (engine-specific, usually 48 bits)
+        #[arg(long)]
+        randstorm_seed_override: Option<u64>,
+
+        /// Brute-force seed bits (adds 2^bits seeds per timestamp; max 28)
+        #[arg(long)]
+        randstorm_seed_bruteforce_bits: Option<u8>,
+
+        /// Also test uncompressed pubkeys when deriving P2PKH
+        #[arg(long)]
+        randstorm_include_uncompressed: bool,
+    },
 }
 
 const DEFAULT_RPC_URL: &str = "http://127.0.0.1:8332";
@@ -294,6 +362,37 @@ fn main() -> Result<()> {
             let start_ts = start.unwrap_or(1293840000); // 2011
             let end_ts = end.unwrap_or(1735689600); // 2025
             scans::trust_wallet_lcg::run(&target, start_ts, end_ts)?;
+        }
+        Commands::RandstormScan {
+            target_addresses,
+            start_ms,
+            end_ms,
+            interval_ms,
+            phase,
+            mode,
+            gpu,
+            cpu,
+            output,
+            randstorm_engine,
+            randstorm_seed_override,
+            randstorm_seed_bruteforce_bits,
+            randstorm_include_uncompressed,
+        } => {
+            scans::randstorm::cli::run_scan(
+                &target_addresses,
+                start_ms,
+                end_ms,
+                interval_ms,
+                phase,
+                &mode,
+                gpu,
+                cpu,
+                output.as_deref(),
+                &randstorm_engine,
+                randstorm_seed_override,
+                randstorm_seed_bruteforce_bits,
+                randstorm_include_uncompressed,
+            )?;
         }
     }
 

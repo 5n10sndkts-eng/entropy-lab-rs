@@ -7,6 +7,42 @@ use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 
+/// Iterator for generating timestamp permutations across vulnerable window
+pub struct TimestampGenerator {
+    pub(crate) start_ms: u64,
+    pub(crate) end_ms: u64,
+    pub(crate) interval_ms: u64,
+    current_ms: u64,
+}
+
+impl TimestampGenerator {
+    pub fn new(start_ms: u64, end_ms: u64, interval_ms: u64) -> Self {
+        Self {
+            start_ms,
+            end_ms,
+            interval_ms,
+            current_ms: start_ms,
+        }
+    }
+
+    pub fn reset(&mut self) {
+        self.current_ms = self.start_ms;
+    }
+}
+
+impl Iterator for TimestampGenerator {
+    type Item = u64;
+
+    fn next(&mut self) -> Option<u64> {
+        if self.current_ms >= self.end_ms {
+            return None;
+        }
+        let ts = self.current_ms;
+        self.current_ms += self.interval_ms;
+        Some(ts)
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BrowserConfig {
     pub priority: u32,
@@ -22,6 +58,24 @@ pub struct BrowserConfig {
     pub year_max: u16,
 }
 
+impl Default for BrowserConfig {
+    fn default() -> Self {
+        Self {
+            priority: 0,
+            user_agent: String::new(),
+            screen_width: 1024,
+            screen_height: 768,
+            color_depth: 24,
+            timezone_offset: 0,
+            language: String::from("en-US"),
+            platform: String::new(),
+            market_share_estimate: 0.0,
+            year_min: 2011,
+            year_max: 2015,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Phase {
     One,   // Top 100 configs
@@ -34,7 +88,7 @@ pub struct FingerprintDatabase {
 }
 
 impl FingerprintDatabase {
-    /// Load fingerprint database from embedded data
+    /// Load fingerprint database from embedded data (100 configs)
     pub fn load() -> Result<Self> {
         const EMBEDDED_CSV: &str = include_str!("data/phase1_top100.csv");
 
@@ -48,6 +102,22 @@ impl FingerprintDatabase {
         }
 
         // Already sorted by priority in the CSV
+        Ok(Self { configs })
+    }
+
+    /// Load comprehensive database from embedded data (246 configs)
+    pub fn load_comprehensive() -> Result<Self> {
+        const EMBEDDED_CSV: &str = include_str!("data/comprehensive.csv");
+
+        let mut reader = csv::Reader::from_reader(EMBEDDED_CSV.as_bytes());
+        let mut configs = Vec::new();
+
+        for result in reader.deserialize() {
+            let config: BrowserConfig =
+                result.context("Failed to parse comprehensive browser config")?;
+            configs.push(config);
+        }
+
         Ok(Self { configs })
     }
 
@@ -129,6 +199,40 @@ impl FingerprintDatabase {
 mod tests {
     use super::*;
 
+    // TEST-ID: 1.9-UNIT-001
+    // AC: AC-1 (Timestamp Permutation Engine)
+    // PRIORITY: P0
+    #[test]
+    fn test_timestamp_generator_iteration() {
+        let start_ms = 1306886400000; // June 1, 2011 00:00:00 UTC
+        let end_ms = 1306972800000; // June 2, 2011 00:00:00 UTC (24 hours later)
+        let interval_ms = 3600000; // 1 hour
+
+        let gen = TimestampGenerator::new(start_ms, end_ms, interval_ms);
+        let timestamps: Vec<u64> = gen.collect();
+
+        assert_eq!(timestamps.len(), 24, "24 hours = 24 timestamps");
+        assert_eq!(timestamps[0], start_ms);
+        assert_eq!(timestamps[23], start_ms + 23 * interval_ms);
+    }
+
+    // TEST-ID: 1.9-UNIT-002
+    // AC: AC-1 (Timestamp Permutation Engine)
+    // PRIORITY: P0
+    #[test]
+    fn test_vulnerable_window_coverage() {
+        let start_ms = 1306886400000; // June 1, 2011
+        let end_ms = 1435708799000; // June 30, 2015
+        let interval_ms = 3600000; // 1 hour
+
+        let gen = TimestampGenerator::new(start_ms, end_ms, interval_ms);
+        let count = gen.count();
+
+        // ~4 years × 365.25 days × 24 hours = 35,064 hours
+        assert!(count > 35000, "Should have ~35K hourly timestamps");
+        assert!(count < 36000, "Sanity check: not more than 36K");
+    }
+
     #[test]
     fn test_database_loads() {
         let db = FingerprintDatabase::load();
@@ -165,5 +269,51 @@ mod tests {
         assert_eq!(db.get_configs_for_phase(Phase::One).len(), 100);
         assert_eq!(db.get_configs_for_phase(Phase::Two).len(), 150);
         assert_eq!(db.get_configs_for_phase(Phase::Three).len(), 150);
+    }
+
+    // TEST-ID: 1.9-UNIT-006
+    // AC: AC-2 (Comprehensive Database)
+    // PRIORITY: P0
+    #[test]
+    fn test_comprehensive_database_loads() {
+        let db =
+            FingerprintDatabase::load_comprehensive().expect("Failed to load comprehensive DB");
+        assert_eq!(db.len(), 246, "Expected 246 configs");
+    }
+
+    // TEST-ID: 1.9-UNIT-007
+    // AC: AC-2 (Language Coverage)
+    // PRIORITY: P1
+    #[test]
+    fn test_language_coverage() {
+        let db = FingerprintDatabase::load_comprehensive().unwrap();
+
+        // Check for diverse languages
+        let has_chinese = db.configs.iter().any(|c| c.language == "zh-CN");
+        let has_japanese = db.configs.iter().any(|c| c.language == "ja-JP");
+        let has_german = db.configs.iter().any(|c| c.language == "de-DE");
+        let has_spanish = db.configs.iter().any(|c| c.language == "es-ES");
+
+        assert!(has_chinese, "Should have Chinese configs");
+        assert!(has_japanese, "Should have Japanese configs");
+        assert!(has_german, "Should have German configs");
+        assert!(has_spanish, "Should have Spanish configs");
+    }
+
+    // TEST-ID: 1.9-UNIT-008
+    // AC: AC-2 (Platform Coverage)
+    // PRIORITY: P1
+    #[test]
+    fn test_platform_coverage() {
+        let db = FingerprintDatabase::load_comprehensive().unwrap();
+
+        // Check for Linux
+        let has_linux = db.configs.iter().any(|c| c.platform.contains("Linux"));
+
+        // Check for mobile
+        let has_mobile_ua = db.configs.iter().any(|c| c.user_agent.contains("Mobile"));
+
+        assert!(has_linux, "Should have Linux configs");
+        assert!(has_mobile_ua, "Should have mobile configs");
     }
 }

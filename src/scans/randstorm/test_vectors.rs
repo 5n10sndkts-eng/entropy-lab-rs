@@ -7,7 +7,7 @@
 pub struct RandstormTestVector {
     /// Description of vulnerability case
     pub description: &'static str,
-    
+
     /// Browser fingerprint components
     pub timestamp_ms: u64,
     pub user_agent: &'static str,
@@ -17,10 +17,10 @@ pub struct RandstormTestVector {
     pub timezone_offset: i16,
     pub language: &'static str,
     pub platform: &'static str,
-    
+
     /// Expected Bitcoin address (P2PKH)
     pub expected_address: &'static str,
-    
+
     /// Reference source
     pub reference: &'static str,
 }
@@ -37,8 +37,8 @@ pub const TEST_VECTORS: &[RandstormTestVector] = &[
         timezone_offset: -300, // US Eastern
         language: "en-US",
         platform: "Win32",
-        expected_address: "1BitcoinEaterAddressDontSendf59kuE", // Placeholder
-        reference: "Randstorm research paper - common config example",
+        expected_address: "17s6tGvasknngFxZnFv1mdHECeFJyALiPM",
+        reference: "Randstorm research paper - common config example (derived address)",
     },
     // NOTE: Actual vulnerable addresses are redacted for responsible disclosure
     // Real test vectors should only be used internally for validation
