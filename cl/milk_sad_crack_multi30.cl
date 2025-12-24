@@ -8,22 +8,15 @@ __kernel void milk_sad_crack_multi30(
     ulong target_h160_part1,
     ulong target_h160_part2,
     uint target_h160_part3,
+    uint purpose,
     uint offset
 ) {
     uint gid = get_global_id(0) + offset;
     uint timestamp = gid; // Unix timestamp in seconds
     
     // Generate 128-bit entropy using MT19937 (MSB extraction for Milk Sad)
-    uint entropy_words[4];
-    mt19937_extract_128(timestamp, entropy_words);
-    
     uchar entropy[16] __attribute__((aligned(4)));
-    // Libbitcoin uses MSB extraction (most significant byte of each 32-bit value)
-    for (int i = 0; i < 4; i++) {
-        for (int j = 0; j < 4; j++) {
-            entropy[i*4 + j] = (entropy_words[i] >> (24 - j*8)) & 0xFF;
-        }
-    }
+    mt19937_extract_msb_128(timestamp, entropy);
     
     // BIP39: Entropy → Mnemonic → Seed (PROPER IMPLEMENTATION)
     uchar seed[64] __attribute__((aligned(8)));
@@ -33,9 +26,9 @@ __kernel void milk_sad_crack_multi30(
     extended_private_key_t master_key;
     new_master_from_seed(0, seed, &master_key);
     
-    // Derive m/44'/0'/0'/0 (base for all receive addresses)
+    // Derive m/purpose'/0'/0'/0 (base for all receive addresses)
     extended_private_key_t account_key;
-    hardened_private_child_from_private(&master_key, &account_key, 44);
+    hardened_private_child_from_private(&master_key, &account_key, purpose);
     
     extended_private_key_t coin_key;
     hardened_private_child_from_private(&account_key, &coin_key, 0);

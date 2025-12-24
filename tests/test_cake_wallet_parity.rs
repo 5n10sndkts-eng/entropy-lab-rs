@@ -22,7 +22,7 @@ fn generate_cake_wallet_cpu_address(seed_index: u32) -> (String, String, [u8; 16
     let mnemonic_str = mnemonic.to_string();
 
     // Electrum seed derivation
-    let seed = entropy_lab_rs::utils::electrum::mnemonic_to_seed(&mnemonic_str);
+    let seed = temporal_planetarium_lib::utils::electrum::mnemonic_to_seed(&mnemonic_str);
 
     // Derive m/0'/0/0 path
     let root = Xpriv::new_master(network, &seed).expect("Valid master");
@@ -81,7 +81,7 @@ fn test_cake_wallet_cpu_addresses() {
 #[cfg(feature = "gpu")]
 #[test]
 fn test_cake_wallet_gpu_cpu_parity() {
-    use entropy_lab_rs::scans::gpu_solver::GpuSolver;
+    use temporal_planetarium_lib::scans::gpu_solver::GpuSolver;
 
     println!("\n=== Cake Wallet GPU/CPU Parity Test ===\n");
 

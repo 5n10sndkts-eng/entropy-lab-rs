@@ -31,7 +31,7 @@ Entropy Lab RS is a Rust-based security research tool that scans for various kno
    - Characteristics: 256-bit (24-word) mnemonics, BIP49 (P2SH-SegWit), m/49'/0'/0'/0/0 path
    - Time period: Primarily 2018 wallet activity
    - All requirements fully supported in this implementation
-   - **See [RESEARCH_UPDATE_13.md](RESEARCH_UPDATE_13.md) for complete details**
+   - **See [docs/research/RESEARCH_UPDATE_13.md](docs/research/RESEARCH_UPDATE_13.md) for complete details**
 5. **Malicious Browser Extension** - Simulates malicious extension entropy manipulation
 6. **Android SecureRandom** - Detects duplicate R values in ECDSA signatures
 7. **Profanity** - Scans for Profanity vanity address vulnerabilities
@@ -42,7 +42,7 @@ Entropy Lab RS is a Rust-based security research tool that scans for various kno
 
 ### Features
 
-- GPU acceleration support via OpenCL for high-performance scanning
+- GPU acceleration via OpenCL or WGPU (Metal/Vulkan/DX12) for high-performance scanning
 - RPC integration for balance checking
 - CSV verification against funded addresses
 - Parallel processing with Rayon
@@ -52,7 +52,9 @@ Entropy Lab RS is a Rust-based security research tool that scans for various kno
 ## Prerequisites
 
 - Rust 1.70 or later
-- OpenCL drivers (for GPU acceleration features)
+- GPU acceleration (one of):
+  - **WGPU** (recommended): Native Metal on macOS, Vulkan on Linux/Windows
+  - **OpenCL**: Legacy GPU backend (requires OpenCL drivers)
 - Bitcoin RPC node (optional, for balance checking features)
 
 ## Installation
@@ -65,12 +67,17 @@ cd entropy-lab-rs
 
 2. Build the project:
 
-**For GUI (recommended):**
+**For GUI with WGPU (recommended for macOS):**
 ```bash
-cargo build --release --features "gpu,gui"
+cargo build --release --features "wgpu,gui"
 ```
 
-**For CLI only:**
+**For CLI with WGPU (native Metal/Vulkan):**
+```bash
+cargo build --release --features wgpu
+```
+
+**For CLI with OpenCL (legacy):**
 ```bash
 cargo build --release --features gpu
 ```
@@ -80,7 +87,7 @@ cargo build --release --features gpu
 cargo build --release --features gui
 ```
 
-Note: If you encounter OpenCL linking errors and don't need GPU features, you can build without the `gpu` feature.
+Note: On macOS, WGPU is recommended as it uses native Metal. On Linux/Windows, both WGPU (Vulkan) and OpenCL work. If you encounter OpenCL linking errors, use WGPU instead.
 
 ## Usage
 
@@ -127,6 +134,25 @@ cargo run --release --features gpu -- milk-sad \
   --rpc-url http://127.0.0.1:8332 \
   --rpc-user your_username \
   --rpc-pass your_password
+
+# Randstorm scan with auto-detected GPU backend
+cargo run --release --features wgpu -- randstorm-scan \
+  --target-addresses addresses.csv
+
+# Force WGPU (Metal on macOS, Vulkan on Linux)
+cargo run --release --features wgpu -- randstorm-scan \
+  --target-addresses addresses.csv \
+  --backend wgpu
+
+# Force OpenCL (legacy)
+cargo run --release --features gpu -- randstorm-scan \
+  --target-addresses addresses.csv \
+  --backend opencl
+
+# CPU-only mode
+cargo run --release -- randstorm-scan \
+  --target-addresses addresses.csv \
+  --backend cpu
 ```
 
 ### RPC-Based Scanning
@@ -299,7 +325,7 @@ This project includes extensive GPU acceleration support via OpenCL:
 - Profanity ✓
 - Cake Wallet Dart PRNG ✓
 
-See [OPENCL_OPTIMIZATIONS.md](OPENCL_OPTIMIZATIONS.md) for detailed performance information.
+See [docs/technical/OPENCL_OPTIMIZATIONS.md](docs/technical/OPENCL_OPTIMIZATIONS.md) for detailed performance information.
 
 ## Known Limitations
 
@@ -310,8 +336,8 @@ See [OPENCL_OPTIMIZATIONS.md](OPENCL_OPTIMIZATIONS.md) for detailed performance 
 3. **Performance**: Some scanners can be computationally intensive. Consider using the `--release` flag for production scanning.
 
 4. **Incomplete Coverage**: This project implements several vulnerability scanners but is missing some critical ones documented at milksad.info:
-   - **📊 [Gap Analysis Summary](GAP_ANALYSIS_SUMMARY.md)** - Executive overview of missing features
-   - **📋 [Detailed Gap Analysis](MILKSAD_GAP_ANALYSIS.md)** - Complete technical analysis
+   - **📊 [Gap Analysis Summary](docs/research/GAP_ANALYSIS_SUMMARY.md)** - Executive overview of missing features
+   - **📋 [Detailed Gap Analysis](docs/research/MILKSAD_GAP_ANALYSIS.md)** - Complete technical analysis
    
    **Highest Priority Missing:**
    - **Randstorm/BitcoinJS (2011-2015)**: Affects 1.4M+ BTC ($1B+ at risk) - Blockchain.info, CoinPunk, BrainWallet
@@ -378,12 +404,12 @@ This measures throughput for:
 
 - [x] Complete Android SecureRandom private key recovery implementation
 - [x] **[COMPLETED]** Research Update #13 support (224k+ wallets, 24-word BIP49)
-  - See detailed documentation: [RESEARCH_UPDATE_13.md](RESEARCH_UPDATE_13.md)
+  - See detailed documentation: [docs/research/RESEARCH_UPDATE_13.md](docs/research/RESEARCH_UPDATE_13.md)
 - [x] **[COMPLETED]** Fix critical P2SH-P2WPKH address generation in GPU kernels
-  - See analysis: [HASHCAT_ANALYSIS_SUMMARY.md](HASHCAT_ANALYSIS_SUMMARY.md)
+  - See analysis: [docs/research/HASHCAT_ANALYSIS_SUMMARY.md](docs/research/HASHCAT_ANALYSIS_SUMMARY.md)
 - [ ] **[HIGH PRIORITY]** Implement Randstorm/BitcoinJS scanner (2011-2015 vulnerability)
 - [ ] **[HIGH PRIORITY]** Create hashcat modules for external tool integration
-  - See specifications: [HASHCAT_MODULES_RECOMMENDED.md](HASHCAT_MODULES_RECOMMENDED.md)
+  - See specifications: [docs/research/HASHCAT_MODULES_RECOMMENDED.md](docs/research/HASHCAT_MODULES_RECOMMENDED.md)
 - [ ] **[CRITICAL]** Add Electrum seed version prefix validation for Cake Wallet
 - [ ] **[HIGH]** Implement Trust Wallet iOS minstd_rand0 scanner (CVE-2024-23660)
 - [ ] **[HIGH]** Add multi-path derivation support (BIP44/49/84/86)
@@ -398,19 +424,19 @@ This measures throughput for:
 - [ ] Create detailed documentation for each scanner
 - [ ] Complete Profanity vanity address scanner
 
-See [MILKSAD_GAP_ANALYSIS.md](MILKSAD_GAP_ANALYSIS.md) for detailed gap analysis and implementation priorities.
+See [docs/research/MILKSAD_GAP_ANALYSIS.md](docs/research/MILKSAD_GAP_ANALYSIS.md) for detailed gap analysis and implementation priorities.
 
 ## Documentation
 
 ### Technical Documentation
 
-- **[HASHCAT_ANALYSIS_SUMMARY.md](HASHCAT_ANALYSIS_SUMMARY.md)** - Executive summary of hashcat module status and address format analysis
-- **[HASHCAT_MODULE_ANALYSIS.md](HASHCAT_MODULE_ANALYSIS.md)** - Comprehensive technical analysis of OpenCL kernels and address formats
-- **[HASHCAT_MODULES_RECOMMENDED.md](HASHCAT_MODULES_RECOMMENDED.md)** - Specifications for creating hashcat-compatible modules
-- **[ADDRESS_FORMAT_REFERENCE.md](ADDRESS_FORMAT_REFERENCE.md)** - Quick reference for Bitcoin address types and generation
-- **[RESEARCH_UPDATE_13.md](RESEARCH_UPDATE_13.md)** - Milk Sad Research Update #13 implementation details
-- **[OPENCL_OPTIMIZATIONS.md](OPENCL_OPTIMIZATIONS.md)** - GPU performance optimization guide
-- **[GPU_OPTIMIZATION_GUIDE.md](GPU_OPTIMIZATION_GUIDE.md)** - Advanced GPU optimization techniques
+- **[docs/research/HASHCAT_ANALYSIS_SUMMARY.md](docs/research/HASHCAT_ANALYSIS_SUMMARY.md)** - Executive summary of hashcat module status and address format analysis
+- **[docs/research/HASHCAT_MODULE_ANALYSIS.md](docs/research/HASHCAT_MODULE_ANALYSIS.md)** - Comprehensive technical analysis of OpenCL kernels and address formats
+- **[docs/research/HASHCAT_MODULES_RECOMMENDED.md](docs/research/HASHCAT_MODULES_RECOMMENDED.md)** - Specifications for creating hashcat-compatible modules
+- **[docs/technical/ADDRESS_FORMAT_REFERENCE.md](docs/technical/ADDRESS_FORMAT_REFERENCE.md)** - Quick reference for Bitcoin address types and generation
+- **[docs/research/RESEARCH_UPDATE_13.md](docs/research/RESEARCH_UPDATE_13.md)** - Milk Sad Research Update #13 implementation details
+- **[docs/technical/OPENCL_OPTIMIZATIONS.md](docs/technical/OPENCL_OPTIMIZATIONS.md)** - GPU performance optimization guide
+- **[docs/technical/GPU_OPTIMIZATION_GUIDE.md](docs/technical/GPU_OPTIMIZATION_GUIDE.md)** - Advanced GPU optimization techniques
 - **[SECURITY.md](SECURITY.md)** - Security policy and vulnerability reporting
 
 ### GPU Kernels

@@ -107,7 +107,7 @@ __kernel void batch_cake_full(
             
             // Store 33-byte serialized public key
             uchar serialized[33];
-            secp256k1_ec_pubkey_serialize(serialized, 33, &address_pub.pub_key, SECP256K1_EC_COMPRESSED); // 258
+            secp256k1_ec_pubkey_serialize(serialized, 33, &address_pub.public_key.key, SECP256K1_EC_COMPRESSED); // 258
             
             int out_idx = (change * 20 + addr_idx) * 33;
             for (int k = 0; k < 33; k++) {

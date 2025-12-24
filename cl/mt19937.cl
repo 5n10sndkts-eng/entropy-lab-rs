@@ -139,15 +139,3 @@ void mt19937_extract_128(uint seed, __private uint* output) {
     }
 }
 
-// DEPRECATED: Extract 16 words for LSB - Trust Wallet
-// Use mt19937_extract_lsb_128 instead
-void mt19937_extract_128_lsb(uint seed, __private uint* output) {
-    uint state[MT_N];
-    
-    mt19937_init(seed, state);
-    mt19937_twist(state);
-    
-    for (int i = 0; i < 16; i++) {
-        output[i] = mt19937_temper(state[i]);
-    }
-}

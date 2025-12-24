@@ -7,9 +7,11 @@ __kernel void batch_address(
     __global const ulong * restrict entropies_hi, 
     __global const ulong * restrict entropies_lo, 
     __global uchar * restrict output_addresses, 
-    uint purpose
+    uint purpose,
+    uint batch_size
 ) {
   ulong idx = get_global_id(0);
+  if (idx >= batch_size) return;
   
   // OPTIMIZATION: Coalesced memory reads - threads access consecutive elements
   ulong mnemonic_hi = entropies_hi[idx];
@@ -71,63 +73,16 @@ __kernel void batch_address(
   mnemonic[mnemonic_index - 1] = 0;
 
   // --- PBKDF2 (Mnemonic -> Seed) ---
-  uchar ipad_key[128] __attribute__((aligned(4)));
-  uchar opad_key[128] __attribute__((aligned(4)));
-  for(int x=0;x<128;x++){
-    ipad_key[x] = 0x36;
-    opad_key[x] = 0x5c;
-  }
-
-  for(int x=0;x<mnemonic_length;x++){
-    ipad_key[x] = ipad_key[x] ^ mnemonic[x];
-    opad_key[x] = opad_key[x] ^ mnemonic[x];
-  }
-
-  uchar seed[64] __attribute__((aligned(4))) = { 0 };
-  uchar sha512_result[64] __attribute__((aligned(4))) = { 0 };
-  uchar key_previous_concat[256] __attribute__((aligned(4))) = { 0 };
+  uchar seed[64] __attribute__((aligned(4)));
+  uchar salt[12] = { 109, 110, 101, 109, 111, 110, 105, 99, 0, 0, 0, 1 }; // "mnemonic" + 1
   
-  // Default salt: "mnemonic" (BIP39) + block count 1
-  uchar salt[12] = { 109, 110, 101, 109, 111, 110, 105, 99, 0, 0, 0, 1 };
-  
-  // For Cake Wallet (purpose=0), use "electrum" salt
   if (purpose == 0) {
-      // "electrum"
-      salt[0] = 101; // e
-      salt[1] = 108; // l
-      salt[2] = 101; // e
-      salt[3] = 99;  // c
-      salt[4] = 116; // t
-      salt[5] = 114; // r
-      salt[6] = 117; // u
-      salt[7] = 109; // m
+      // Cake Wallet Electrum salt
+      salt[0] = 101; salt[1] = 108; salt[2] = 101; salt[3] = 99;
+      salt[4] = 116; salt[5] = 114; salt[6] = 117; salt[7] = 109;
   }
 
-  for(int x=0;x<128;x++){
-    key_previous_concat[x] = ipad_key[x];
-  }
-  for(int x=0;x<12;x++){
-    key_previous_concat[x+128] = salt[x];
-  }
-
-  // sha512 expects ulong*
-  sha512((__private ulong*)key_previous_concat, 140, (__private ulong*)sha512_result);
-  
-  // copy_pad_previous expects uchar* (based on previous usage)
-  copy_pad_previous(opad_key, sha512_result, key_previous_concat);
-  
-  sha512((__private ulong*)key_previous_concat, 192, (__private ulong*)sha512_result);
-  
-  // xor_seed_with_round expects char*
-  xor_seed_with_round((__private char*)seed, (__private char*)sha512_result);
-
-  for(int x=1;x<2048;x++){
-    copy_pad_previous(ipad_key, sha512_result, key_previous_concat);
-    sha512((__private ulong*)key_previous_concat, 192, (__private ulong*)sha512_result);
-    copy_pad_previous(opad_key, sha512_result, key_previous_concat);
-    sha512((__private ulong*)key_previous_concat, 192, (__private ulong*)sha512_result);
-    xor_seed_with_round((__private char*)seed, (__private char*)sha512_result);
-  }
+  mnemonic_to_seed(mnemonic, mnemonic_length, salt, 12, seed);
 
   // --- Address Derivation ---
   uchar network = BITCOIN_MAINNET;
@@ -222,7 +177,8 @@ __kernel void batch_address(
       
       // BIP39 Seed
       uchar seed[64];
-      mnemonic_to_seed(mnemonic, mnemonic_len, seed);
+      uchar salt[12] = { 109, 110, 101, 109, 111, 110, 105, 99, 0, 0, 0, 1 };
+      mnemonic_to_seed(mnemonic, mnemonic_len, salt, 12, seed);
       
       // BIP32 Derivation m/44'/0'/0'/0/0
       extended_private_key_t master_private;
@@ -281,7 +237,8 @@ __kernel void batch_address(
       
       // BIP39 Seed
       uchar seed[64];
-      mnemonic_to_seed(mnemonic, mnemonic_len, seed);
+      uchar salt[12] = { 109, 110, 101, 109, 111, 110, 105, 99, 0, 0, 0, 1 };
+      mnemonic_to_seed(mnemonic, mnemonic_len, salt, 12, seed);
       
       // BIP32 Derivation m/0'/0/0 (Cake Wallet path)
       extended_private_key_t master_private;

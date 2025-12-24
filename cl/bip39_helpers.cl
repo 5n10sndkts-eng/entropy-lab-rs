@@ -9,26 +9,31 @@ static inline int generate_mnemonic(__private uchar* entropy, int entropy_len, _
     sha256((__private const uint*)entropy, entropy_len, entropy_hash_buf);
     uchar checksum = (((uchar*)entropy_hash_buf)[0] >> 4) & 0xF;
     
-    // Convert entropy to word indices
-    ulong mnemonic_lo = 0;
-    ulong mnemonic_hi = 0;
+    // BIP39 entropy (128 bits) + 4-bit checksum = 132 bits
+    // We need 12 words of 11 bits each.
     
-    for(int i=0; i<8; i++) mnemonic_lo |= ((ulong)entropy[i]) << (i*8);
-    for(int i=0; i<8; i++) mnemonic_hi |= ((ulong)entropy[i+8]) << (i*8);
+    // Create a 17-byte buffer for entropy + checksum
+    uchar buf[17];
+    for(int i=0; i<16; i++) buf[i] = entropy[i];
+    buf[16] = checksum << 4; // Checksum is the 4 most significant bits of the last byte
     
+    // Extract 11-bit chunks
     ushort indices[12];
-    indices[0] = (mnemonic_hi >> 53) & 2047;
-    indices[1] = (mnemonic_hi >> 42) & 2047;
-    indices[2] = (mnemonic_hi >> 31) & 2047;
-    indices[3] = (mnemonic_hi >> 20) & 2047;
-    indices[4] = (mnemonic_hi >> 9)  & 2047;
-    indices[5] = ((mnemonic_hi & ((1 << 9)-1)) << 2) | ((mnemonic_lo >> 62) & 3);
-    indices[6] = (mnemonic_lo >> 51) & 2047;
-    indices[7] = (mnemonic_lo >> 40) & 2047;
-    indices[8] = (mnemonic_lo >> 29) & 2047;
-    indices[9] = (mnemonic_lo >> 18) & 2047;
-    indices[10] = (mnemonic_lo >> 7) & 2047;
-    indices[11] = ((mnemonic_lo & ((1 << 7)-1)) << 4) | checksum;
+    for (int i = 0; i < 12; i++) {
+        int bit_pos = i * 11;
+        int byte_pos = bit_pos / 8;
+        int bit_offset = bit_pos % 8;
+        
+        // Read 16 bits starting at byte_pos
+        uint val = ((uint)buf[byte_pos] << 8) | (uint)buf[byte_pos + 1];
+        if (bit_offset > 5) {
+             // Need one more byte if 11 bits span across 3 bytes
+             val = (val << 8) | (uint)buf[byte_pos + 2];
+             indices[i] = (val >> (16 - 11 - bit_offset)) & 0x7FF;
+        } else {
+             indices[i] = (val >> (16 - 11 - bit_offset)) & 0x7FF;
+        }
+    }
     
     // Build mnemonic string
     int mnemonic_index = 0;
@@ -51,40 +56,77 @@ static inline int generate_mnemonic(__private uchar* entropy, int entropy_len, _
 }
 
 // BIP39 Mnemonic to Seed (PBKDF2-HMAC-SHA512)
-static inline void mnemonic_to_seed(__private uchar* mnemonic, int mnemonic_len, __private uchar* seed) {
-    uchar ipad_key[128] __attribute__((aligned(4)));
-    uchar opad_key[128] __attribute__((aligned(4)));
-    for(int x=0;x<128;x++){
-        ipad_key[x] = 0x36;
-        opad_key[x] = 0x5c;
-    }
-
-    for(int x=0;x<mnemonic_len;x++){
-        ipad_key[x] = ipad_key[x] ^ mnemonic[x];
-        opad_key[x] = opad_key[x] ^ mnemonic[x];
-    }
-
-    uchar sha512_result[64] __attribute__((aligned(4))) = { 0 };
-    uchar key_previous_concat[256] __attribute__((aligned(4))) = { 0 };
-    uchar salt[12] = { 109, 110, 101, 109, 111, 110, 105, 99, 0, 0, 0, 1 };
+// Optimized with state memoization and unrolling
+static inline void mnemonic_to_seed(__private uchar* mnemonic, int mnemonic_len, __private uchar* salt, int salt_len, __private uchar* seed_output) {
+    uchar current_hash[64];
+    uchar last_hash[64];
+    uchar seed[64];
+    for(int i=0; i<64; i++) seed[i] = 0;
     
-    for(int x=0;x<128;x++){
-        key_previous_concat[x] = ipad_key[x];
+    // T1 = HMAC(mnemonic, salt || 0001)
+    uchar salt_with_index[128];
+    for(int i=0; i<salt_len; i++) salt_with_index[i] = salt[i];
+    salt_with_index[salt_len] = 0x00;
+    salt_with_index[salt_len+1] = 0x00;
+    salt_with_index[salt_len+2] = 0x00;
+    salt_with_index[salt_len+3] = 0x01;
+    
+    hmac_sha512(mnemonic, mnemonic_len, salt_with_index, salt_len + 4, last_hash);
+    for(int i=0; i<64; i++) seed[i] = last_hash[i];
+    
+    // Memoize HMAC states for mnemonic
+    // HMAC(K, m) = H((K ^ opad) || H((K ^ ipad) || m))
+    // mnemonic is the key (K)
+    uchar ipad[128], opad[128];
+    uchar key_buf[128];
+    for(int i=0; i<128; i++) key_buf[i] = 0;
+    for(int i=0; i<mnemonic_len && i<128; i++) key_buf[i] = mnemonic[i];
+    
+    for(int i=0; i<128; i++) {
+        ipad[i] = key_buf[i] ^ 0x36;
+        opad[i] = key_buf[i] ^ 0x5c;
     }
-    for(int x=0;x<12;x++){
-        key_previous_concat[x+128] = salt[x];
+    
+    ulong ipad_state[8], opad_state[8];
+    for(int i=0; i<8; i++) ipad_state[i] = k_sha512_iv[i];
+    sha512_compress(ipad_state, (const __private ulong*)ipad);
+    
+    for(int i=0; i<8; i++) opad_state[i] = k_sha512_iv[i];
+    sha512_compress(opad_state, (const __private ulong*)opad);
+    
+    // PBKDF2 rounds (2047 remaining)
+    // Unrolled by factor 4
+    for (int j=1; j<2048; j+=4) {
+        for(int r=0; r<4; r++) {
+            // Inner hash: H((K^ipad) || last_hash)
+            ulong state[8];
+            for(int i=0; i<8; i++) state[i] = ipad_state[i];
+            
+            // last_hash is 64 bytes, fits in 1 block with padding
+            ulong block[16];
+            for(int i=0; i<16; i++) block[i] = 0;
+            for(int i=0; i<64; i++) ((uchar*)block)[i] = last_hash[i];
+            ((uchar*)block)[64] = 0x80;
+            block[15] = SWAP512((ulong)(128 + 64) * 8);
+            
+            sha512_compress(state, block);
+            
+            uchar inner_hash[64];
+            for(int i=0; i<8; i++) ((ulong*)inner_hash)[i] = SWAP512(state[i]);
+            
+            // Outer hash: H((K^opad) || inner_hash)
+            for(int i=0; i<8; i++) state[i] = opad_state[i];
+            for(int i=0; i<16; i++) block[i] = 0;
+            for(int i=0; i<64; i++) ((uchar*)block)[i] = inner_hash[i];
+            ((uchar*)block)[64] = 0x80;
+            block[15] = SWAP512((ulong)(128 + 64) * 8);
+            
+            sha512_compress(state, block);
+            
+            for(int i=0; i<8; i++) ((ulong*)last_hash)[i] = SWAP512(state[i]);
+            for(int i=0; i<64; i++) seed[i] ^= last_hash[i];
+        }
     }
-
-    sha512((__private ulong*)key_previous_concat, 140, (__private ulong*)sha512_result);
-    copy_pad_previous(opad_key, sha512_result, key_previous_concat);
-    sha512((__private ulong*)key_previous_concat, 192, (__private ulong*)sha512_result);
-    xor_seed_with_round((__private char*)seed, (__private char*)sha512_result);
-
-    for(int x=1;x<2048;x++){
-        copy_pad_previous(ipad_key, sha512_result, key_previous_concat);
-        sha512((__private ulong*)key_previous_concat, 192, (__private ulong*)sha512_result);
-        copy_pad_previous(opad_key, sha512_result, key_previous_concat);
-        sha512((__private ulong*)key_previous_concat, 192, (__private ulong*)sha512_result);
-        xor_seed_with_round((__private char*)seed, (__private char*)sha512_result);
-    }
+    
+    for(int i=0; i<64; i++) seed_output[i] = seed[i];
 }

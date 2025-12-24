@@ -1,0 +1,892 @@
+# Sprint Status Tracking
+# Generated: 2025-12-18T02:49:15.578Z
+# Project: temporal-planetarium
+# Tracking System: file-system
+# Story Location: /Users/moe/temporal-planetarium/_bmad-output/implementation-artifacts
+
+project:
+  name: temporal-planetarium
+  description: "Bitcoin vulnerability scanner with GPU acceleration for security research"
+  repository: "https://github.com/yourusername/temporal-planetarium"
+
+tracking:
+  system: file-system
+  story_location: "/Users/moe/temporal-planetarium/_bmad-output/implementation-artifacts"
+  last_updated: "2025-12-24T08:30:00.000Z"
+  generated_by: "Bob (Scrum Master Agent)"
+
+team:
+  velocity_points_per_sprint: 20  # Estimated, adjust based on actual velocity
+  sprint_duration_weeks: 2
+  current_sprint: 1
+
+epics:
+  - id: EPIC-001
+    title: "Randstorm Scanner Enhancement & Validation"
+    description: "Enhance and validate Randstorm scanner based on Ali Akhgar research"
+    priority: high
+    status: completed
+    started_date: "2025-12-18"
+    completed_date: "2025-12-22"
+    stories:
+      - id: STORY-001-001
+        title: "Generate Controlled Test Vectors"
+        description: "Create controlled test vectors with known seeds for validation"
+        priority: critical
+        status: done
+        estimated_points: 5
+        assignee: Antigravity
+        sprint: 1
+        started_date: "2025-12-18"
+        completed_date: "2025-12-20"
+        acceptance_criteria:
+          - "Create tests/test_vector_generation.rs"
+          - "Generate 10+ test vectors with known seeds"
+          - "Test compressed and uncompressed addresses"
+          - "Document expected behavior"
+          - "Save to tests/fixtures/randstorm_test_vectors.json"
+        tags:
+          - testing
+          - validation
+          - critical
+          
+      - id: STORY-001-002
+        title: "Validate Dual Seeding Behavior"
+        description: "Validate timestamp XOR occurs twice and document entropy gain"
+        priority: high
+        status: done
+        estimated_points: 3
+        assignee: Antigravity
+        sprint: 1
+        started_date: "2025-12-20"
+        completed_date: "2025-12-22"
+        acceptance_criteria:
+          - "Confirm timestamp XOR at pool initialization"
+          - "Confirm timestamp XOR before ARC4 init"
+          - "Measure timing delta"
+          - "Document entropy analysis"
+          - "Add unit test test_dual_seeding()"
+        tags:
+          - validation
+          - documentation
+          
+      - id: STORY-001-003
+        title: "Document RC4 State Dependency"
+        description: "Document how RC4 state affects multi-wallet generation"
+        priority: medium
+        status: done
+        estimated_points: 3
+        assignee: Antigravity
+        sprint: 1
+        started_date: "2025-12-20"
+        completed_date: "2025-12-22"
+        acceptance_criteria:
+          - "Create docs/randstorm-rc4-state.md"
+          - "Document multi-wallet behavior"
+          - "Add unit test for wallet index differences"
+          - "Explain attack complexity increase"
+          - "Update attack planning docs"
+        tags:
+          - documentation
+          - research
+          
+      - id: STORY-001-004
+        title: "Implement LFSR Seed Generation Model"
+        description: "Model V8's LFSR to simulate MWC1616 seed uncertainty"
+        priority: high
+        status: done
+        estimated_points: 8
+        assignee: Antigravity
+        sprint: 1
+        started_date: "2025-12-22"
+        completed_date: "2025-12-22"
+        dependencies:
+          - STORY-001-001
+        acceptance_criteria:
+          - "Create src/scans/randstorm/prng/lfsr_seed.rs"
+          - "Implement LFSR polynomial matching V8"
+          - "Generate MWC1616 seeds from LFSR state"
+          - "Expand search space with LFSR uncertainty"
+          - "Document computational cost increase"
+          - "Add unit tests for determinism"
+        tags:
+          - implementation
+          - prng
+          - high-priority
+          
+      - id: STORY-001-005
+        title: "Integrate Z3 Theorem Prover for MWC1616"
+        description: "Implement Z3-based MWC1616 state recovery"
+        priority: high
+        status: done
+        estimated_points: 13
+        assignee: Antigravity
+        sprint: 1
+        started_date: "2025-12-22"
+        completed_date: "2025-12-22"
+        dependencies:
+          - STORY-001-004
+        acceptance_criteria:
+          - "Add z3 crate dependency"
+          - "Create src/scans/randstorm/z3_solver.rs"
+          - "Implement MwcConstraintSolver"
+          - "Support solving from observed outputs"
+          - "Handle multiple addresses from same pool"
+          - "Add integration test"
+          - "Benchmark solver performance"
+        tags:
+          - implementation
+          - advanced
+          - theorem-proving
+          
+      - id: STORY-001-006
+        title: "Add Firefox SpiderMonkey PRNG Support"
+        description: "Support Firefox Math.random() implementation"
+        priority: medium
+        status: done
+        estimated_points: 8
+        assignee: Antigravity
+        sprint: 1
+        started_date: "2025-12-21"
+        completed_date: "2025-12-22"
+        dependencies:
+          - STORY-001-001
+        acceptance_criteria:
+          - "Research SpiderMonkey MWC variant"
+          - "Create src/scans/randstorm/prng/firefox_sm.rs"
+          - "Implement BrowserEngine::FirefoxSM"
+          - "Update BrowserFingerprint struct"
+          - "Update fingerprint database"
+          - "Add unit tests"
+          - "Document differences from V8"
+        tags:
+          - implementation
+          - browser-support
+          - multi-platform
+          
+      - id: STORY-001-007
+        title: "Create Attack Complexity Estimator Tool"
+        description: "Build tool to assess attack feasibility"
+        priority: medium
+        status: done
+        estimated_points: 5
+        assignee: Antigravity
+        sprint: 1
+        started_date: "2025-12-22"
+        completed_date: "2025-12-22"
+        acceptance_criteria:
+          - "Create src/scans/randstorm/attack_estimator.rs"
+          - "Implement AttackComplexityEstimate struct"
+          - "Calculate candidate counts"
+          - "Estimate GPU/CPU time"
+          - "Classify feasibility"
+          - "Add CLI command --estimate-complexity"
+          - "Document guidance"
+        tags:
+          - tooling
+          - planning
+          - user-experience
+
+  - id: EPIC-006
+    title: "Trust Wallet Vulnerability (CVE-2023-31290)"
+    description: "GPU-accelerated scanning for Trust Wallet LSB extraction vulnerability"
+    priority: high
+    status: completed
+    started_date: "2025-12-20"
+    completed_date: "2025-12-24"
+    stories:
+      - id: STORY-006-001
+        title: "Implement Trust Wallet Browser Extension Vulnerability Scanner"
+        description: "Optimized GPU scanner for MT19937 LSB extraction"
+        priority: high
+        status: done
+        estimated_points: 8
+        assignee: Antigravity
+        sprint: 1
+        started_date: "2025-12-20"
+        completed_date: "2025-12-24"
+        acceptance_criteria:
+          - "MT19937 8-bit LSB extraction"
+          - "OpenCL kernel cl/trust_wallet_crack.cl"
+          - "CPU validation (tests/test_trust_wallet.rs)"
+          - "GPU integration (test_trust_wallet_gpu_crack)"
+
+
+  - id: EPIC-002
+    title: "CryptoDeepTools Integration & Cross-Validation"
+    description: "Establish integration with CryptoDeepTools for validation and complementary usage"
+    priority: medium
+    status: completed
+    started_date: "2025-12-22"
+    completed_date: "2025-12-23"
+    stories:
+      - id: STORY-002-001
+        title: "Shared Test Vector Suite"
+        description: "Create standardized test vectors compatible with both tools"
+        priority: high
+        status: done
+        estimated_points: 5
+        assignee: Antigravity
+        sprint: 1
+        started_date: "2025-12-22"
+        completed_date: "2025-12-23"
+        dependencies:
+          - STORY-001-001
+        acceptance_criteria:
+          - "Define JSON schema for test vectors"
+          - "Export temporal-planetarium vectors to shared format"
+          - "Create Python validation script"
+          - "Document cross-validation workflow"
+          - "Add CI check for both tools"
+        tags:
+          - integration
+          - validation
+          - cross-tool
+          
+      - id: STORY-002-002
+        title: "Python Pseudocode Documentation"
+        description: "Add Python pseudocode alongside Rust for learning"
+        priority: medium
+        status: done
+        estimated_points: 3
+        assignee: Antigravity
+        sprint: null
+        started_date: "2025-12-23"
+        completed_date: "2025-12-23"
+        acceptance_criteria:
+          - "Add Python pseudocode for each scanner"
+          - "Create docs/algorithms/randstorm-pseudocode.md"
+          - "Match CryptoDeepTools style"
+          - "Include references to CryptoDeepTools"
+          - "Maintain consistency with Rust code"
+        tags:
+          - documentation
+          - education
+          - python
+          
+      - id: STORY-002-003
+        title: "Performance Comparison Benchmark Suite"
+        description: "Benchmark temporal-planetarium vs CryptoDeepTools"
+        priority: medium
+        status: done
+        estimated_points: 5
+        assignee: Antigravity
+        sprint: 1
+        started_date: "2025-12-23"
+        completed_date: "2025-12-23"
+        dependencies:
+          - STORY-002-001
+        acceptance_criteria:
+          - "Create benches/cryptodeeptools_comparison.rs"
+          - "Benchmark 1M address derivations"
+          - "Test CPU-only for fair comparison"
+          - "Measure all variants (Python, Rust CPU, Rust GPU)"
+          - "Document results"
+          - "Validate 10-100x speedup claim"
+        tags:
+          - benchmarking
+          - performance
+          - validation
+          
+      - id: STORY-002-004
+        title: "Modular Tool Export (Library Crate)"
+        description: "Export scanners as library crate for external tools"
+        priority: low
+        status: done
+        estimated_points: 8
+        assignee: Antigravity
+        sprint: 1
+        started_date: "2025-12-22"
+        completed_date: "2025-12-23"
+        acceptance_criteria:
+          - "Create temporal-planetarium-lib crate"
+          - "Export scanner modules"
+          - "Provide clean documented API"
+          - "Add usage examples"
+          - "Update main binary to use library"
+          - "Document integration workflow"
+        tags:
+          - architecture
+          - library
+          - reusability
+          
+      - id: STORY-002-005
+        title: "Python Bindings (PyO3)"
+        description: "Enable Python researchers to use Rust performance"
+        priority: low
+        status: done
+        estimated_points: 13
+        assignee: Antigravity
+        sprint: null
+        started_date: "2025-12-23"
+        completed_date: "2025-12-23"
+        dependencies:
+          - STORY-002-004
+        acceptance_criteria:
+          - "Add pyo3 dependency"
+          - "Create python/ package directory"
+          - "Expose scanners via PyO3 wrappers"
+          - "Build wheel with maturin"
+          - "Add Python examples"
+          - "Test on Python 3.8+"
+        tags:
+          - python
+          - bindings
+          - future-enhancement
+
+  - id: EPIC-003
+    title: "GPU Bloom Filter Integration"
+    description: "Enable massive target set lookups (1M+ addresses) with GPU-accelerated Bloom filter"
+    priority: high
+    status: done
+    phase: 11
+    stories:
+      - id: STORY-003-001
+        title: "Implement OpenCL Blocked Bloom Filter Kernel"
+        description: "GPU-resident Bloom filter for O(1) target address lookups"
+        priority: critical
+        status: done
+        estimated_points: 8
+        assignee: Antigravity
+        sprint: 4
+        started_date: "2025-12-23"
+        completed_date: "2025-12-23"
+        acceptance_criteria:
+          - "Blocked Bloom Filter aligned to 256-bit GPU cache lines"
+          - "Lookup time O(1) amortized for 1M addresses"
+          - "False positive rate < 0.1% for k=15 hash functions"
+        tags:
+          - gpu
+          - bloom-filter
+          - performance
+
+      - id: STORY-003-002
+        title: "Benchmark Bloom Filter vs. Linear Scan"
+        description: "Quantify performance improvement of Bloom filter lookup"
+        priority: high
+        status: done
+        estimated_points: 3
+        assignee: Antigravity
+        sprint: 4
+        started_date: "2025-12-23"
+        completed_date: "2025-12-23"
+        acceptance_criteria:
+          - "Benchmark against 100,000 address target set"
+          - "Bloom filter at least 10x faster than linear scan"
+          - "Results documented in bloom-benchmark.md"
+        tags:
+          - benchmarking
+          - performance
+
+      - id: STORY-003-003
+        title: "Integrate Bloom Filter with Randstorm Scanner"
+        description: "Replace linear search in main scanning pipeline"
+        priority: high
+        status: done
+        estimated_points: 5
+        assignee: Antigravity
+        sprint: 4
+        started_date: "2025-12-23"
+        completed_date: "2025-12-23"
+        dependencies:
+          - STORY-003-001
+        acceptance_criteria:
+          - "randstorm-scan accepts --bloom-filter flag"
+          - "Scanner uses GPU Bloom filter for large target sets"
+          - "Performance within 20% of 30,000 keys/sec baseline"
+        tags:
+          - cli
+          - integration
+
+  - id: EPIC-004
+    title: "Multi-Path Derivation Batcher"
+    description: "Cover BIP44/49/84/86 and indices 0-100+ in parallel GPU derivation"
+    priority: high
+    status: done
+    phase: 11
+    stories:
+      - id: STORY-004-001
+        title: "Create DerivationBatcher Rust Module"
+        description: "Takes a seed, outputs 400+ addresses for all supported paths"
+        priority: critical
+        status: done
+        estimated_points: 8
+        assignee: Antigravity
+        sprint: 5
+        started_date: "2025-12-23"
+        completed_date: "2025-12-23"
+        acceptance_criteria:
+          - "DerivationBatcher::derive_all(seed) returns Vec<(Path, Index, Address)>"
+          - "Covers BIP44, BIP49, BIP84, BIP86 for indices 0-99"
+          - "400+ entries per seed"
+        tags:
+          - derivation
+          - multi-path
+
+      - id: STORY-004-002
+        title: "Implement GPU Kernel for HMAC-SHA512 Batching"
+        description: "Parallelize HMAC-SHA512 operations for multi-path derivation"
+        priority: high
+        status: done
+        estimated_points: 8
+        assignee: Antigravity
+        sprint: 5
+        started_date: "2025-12-23"
+        completed_date: "2025-12-23"
+        acceptance_criteria:
+          - "GPU kernel derives 400 (path, index) tuples in parallel"
+          - "At least 10x faster than single-threaded CPU derivation"
+        tags:
+          - gpu
+          - hmac
+          - performance
+
+      - id: STORY-004-003
+        title: "Extend CLI to Accept --path-coverage all"
+        description: "Scanner automatically checks all supported derivation paths"
+        priority: medium
+        status: done
+        estimated_points: 3
+        assignee: Antigravity
+        sprint: 5
+        started_date: "2025-12-23"
+        completed_date: "2025-12-23"
+        dependencies:
+          - STORY-004-001
+        acceptance_criteria:
+          - "--path-coverage all flag accepted"
+          - "BIP44, BIP49, BIP84, BIP86 paths checked for each seed"
+          - "Address indices 0-99 scanned for each path"
+        tags:
+          - cli
+
+      - id: STORY-004-004
+        title: "Validate Multi-Path Derivation Parity"
+        description: "Bit-perfect parity tests against bitcoin-rust"
+        priority: high
+        status: done
+        estimated_points: 5
+        assignee: Antigravity
+        sprint: 5
+        started_date: "2025-12-23"
+        completed_date: "2025-12-23"
+        acceptance_criteria:
+          - "All addresses match bitcoin-rust reference values"
+          - "test_derivation_batcher.rs passes"
+        tags:
+          - testing
+          - parity
+
+  - id: EPIC-005
+    title: "Automated Parity Suite"
+    description: "Ensure 100% cross-tool validation with CryptoDeepTools"
+    priority: medium
+    status: done
+    phase: 11
+    stories:
+      - id: STORY-005-001
+        title: "Generate 10,000+ Test Vectors"
+        description: "Create a massive suite of test cases for Randstorm"
+        priority: high
+        status: done
+        estimated_points: 3
+        assignee: Antigravity
+        sprint: 4
+        started_date: "2025-12-23"
+        completed_date: "2025-12-23"
+        acceptance_criteria:
+          - "10,000+ test vectors covering V8, Java LCG, Safari, IE PRNGs"
+          - "Vectors span BIP44/49/84/86 paths and indices 0-10"
+        tags:
+          - testing
+          - vectors
+
+      - id: STORY-005-002
+        title: "Create validate_parity.py Script"
+        description: "Ensure mathematical parity between Rust and Python"
+        priority: high
+        status: done
+        estimated_points: 3
+        assignee: Antigravity
+        sprint: 4
+        started_date: "2025-12-23"
+        completed_date: "2025-12-23"
+        dependencies:
+          - STORY-005-001
+        acceptance_criteria:
+          - "Script runs temporal-planetarium-lib for each vector"
+          - "Script runs CryptoDeepTools Python for each vector"
+          - "Asserts byte-perfect equality on resulting addresses"
+        tags:
+          - testing
+          - parity
+          - python
+
+      - id: STORY-005-003
+        title: "Integrate Parity Check into GitHub Actions CI"
+        description: "Automate parity validation on every push"
+        priority: high
+        status: done
+        estimated_points: 2
+        assignee: Antigravity
+        sprint: 4
+        started_date: "2025-12-23"
+        completed_date: "2025-12-23"
+        dependencies:
+          - STORY-005-002
+        acceptance_criteria:
+          - "validate_parity.py runs in CI"
+          - "Build fails if any parity check fails"
+          - "Parity score (100% expected) reported"
+        tags:
+          - ci
+          - automation
+
+  - id: EPIC-007
+    title: "Vulnerability Intelligence Database"
+    description: "Centralized management of targeted weak addresses and on-chain forensics"
+    priority: high
+    status: in-progress
+    started_date: "2025-12-24"
+    phase: 13
+    stories:
+      - id: STORY-007-001
+        title: "Implement Target Address Database Schema & Logic"
+        description: "Local database for high-speed target lookup without RAM bottleneck"
+        priority: high
+        status: done
+        estimated_points: 8
+        actual_points: 5
+        assignee: Antigravity
+        sprint: 7
+        created_date: "2025-12-24"
+        started_date: "2025-12-24"
+        completed_date: "2025-12-24"
+        notes: "AC#1-2 complete (SQLite/PostgreSQL backend). AC#3 (CLI import) split to new story"
+        acceptance_criteria:
+          - "SQLite/PostgreSQL schema implemented"
+          - "Indexes on address and vulnerability_class"
+          - "db-import CLI command functional"
+        tags:
+          - database
+          - infrastructure
+
+      - id: STORY-007-002
+        title: "Milk Sad API/Lookup Integration"
+        description: "Automatic verification against the Milk Sad (bx 3.x) weak seed dataset"
+        priority: high
+        status: done
+        estimated_points: 5
+        assignee: Antigravity
+        sprint: 8
+        completed_date: "2025-12-23"
+        acceptance_criteria:
+          - "milksad.info lookup integration"
+          - "Mnemonic-to-vulnerability verify logic pass"
+          - "Cryptographic parity with bx (MSB extraction)"
+          - "Database persistence for hits"
+          - "BIP49/84 support for Update #13"
+        tags:
+          - integration
+          - milk-sad
+          - verified-fix
+
+      - id: STORY-007-003
+        title: "Brainwallet Dictionary Generator & Import"
+        description: "Ingest password lists and generate candidate addresses for common phrases"
+        priority: low
+        status: not_started
+        estimated_points: 5
+        assignee: Antigravity
+        sprint: 7
+        acceptance_criteria:
+          - "SecLists ingestion support"
+          - "Phrase-to-private-key pipeline benchmarks pass"
+        tags:
+          - brainwallet
+          - automation
+
+      - id: STORY-007-004
+        title: "Nonce Reuse Signature Detection Crawler"
+        description: "Identify addresses on-chain that have reused ECDSA nonces"
+        priority: critical
+        status: done
+        estimated_points: 13
+        assignee: Antigravity
+        sprint: 8
+        created_date: "2025-12-24"
+        started_date: "2025-12-24"
+        completed_date: "2025-12-24"
+        acceptance_criteria:
+          - "Detect duplicate r-values in local node data"
+          - "Auto-populate Vulnerable Database with hits"
+          - "Encrypted key storage with AES-256-GCM"
+        progress_notes: |
+          2025-12-24: All 6 tasks completed:
+          - Enhanced block scanner with RPC, progress bar, checkpointing
+          - HashMap-based R-value collision detection
+          - Private key recovery using existing forensics module
+          - AES-256-GCM encrypted storage with PBKDF2 key derivation
+          - CLI commands: nonce-reuse-crawler, list-recovered-keys
+          - All 6 integration tests pass
+        tags:
+          - forensics
+          - blockchain
+
+  - id: EPIC-008
+    title: "Native GPU Modernization (wgpu)"
+    description: "Transition kernels to WGSL for native Apple Metal and universal hardware support"
+    priority: medium
+    status: not_started
+    phase: 13
+    stories:
+      - id: STORY-008-001
+        title: "Port Core Kernels to WGSL"
+        description: "Rewrite Randstorm shaders in WGSL for wgpu compatibility"
+        priority: high
+        status: done
+        estimated_points: 13
+        assignee: Antigravity
+        sprint: 9
+        started_date: "2025-12-22"
+        completed_date: "2025-12-24"
+        progress_notes: |
+          2025-12-23: SHA256 unrolled transform implemented and verified.
+          2025-12-24: RIPEMD160 transform rewritten with correct variable rotation (80 rounds).
+          2025-12-24: All acceptance criteria met. Bit-perfect parity verified.
+          2025-12-24: Code review completed, debug output removed, compiler warnings fixed.
+          2025-12-24: Committed to git (529aa90). Story complete.
+        acceptance_criteria:
+          - "randstorm.wgsl implemented and tested" # ✅ DONE
+          - "Bit-perfect parity with OpenCL" # ✅ VERIFIED
+          - "test_wgpu_hashing_parity passes 100%" # ✅ VERIFIED
+          - "All hash functions produce identical output" # ✅ VERIFIED
+          - "Code follows WGSL/Naga constraints" # ✅ VERIFIED
+        tags:
+          - gpu
+          - wgsl
+
+      - id: STORY-008-002
+        title: "Integrate wgpu in Randstorm Scanner"
+        description: "Support wgpu as backend in GpuDerivationBatcher"
+        priority: high
+        status: done
+        estimated_points: 8
+        assignee: Antigravity
+        sprint: 9
+        created_date: "2025-12-24"
+        completed_date: "2025-12-24"
+        acceptance_criteria:
+          - "randstorm-scan accepts --backend wgpu flag"
+          - "Native execution on Apple Metal successful"
+        progress_notes: |
+          2025-12-24: All tasks completed:
+          - CLI --backend flag already implemented and working
+          - Auto-detection prefers WGPU on macOS, OpenCL on Linux
+          - Tests pass: test_wgpu_backend_selection, test_auto_backend_macos
+          - 100% Bit-Perfect Parity verified on Apple M4 (Metal)
+          - README updated with backend selection examples
+        tags:
+          - architecture
+          - cross-platform
+
+      - id: STORY-008-003
+        title: "Verify Mac/Metal Performance Parity"
+        description: "Ensure wgpu performance meets or exceeds 30k/sec target on Apple Silicon"
+        priority: medium
+        status: not_started
+        estimated_points: 5
+        assignee: Antigravity
+        sprint: 9
+        acceptance_criteria:
+          - "Performance benchmarks documented"
+          - "Parity achieved for all major PRNG engines"
+        tags:
+          - performance
+          - validation
+
+
+sprints:
+  - number: 1
+    start_date: "2025-12-18"
+    end_date: "2026-01-01"
+    status: planned
+    goals:
+      - "Establish test vector foundation (STORY-001-001)"
+      - "Validate dual seeding behavior (STORY-001-002)"
+      - "Document RC4 state (STORY-001-003)"
+    planned_stories:
+      - STORY-001-001
+      - STORY-001-002
+      - STORY-001-003
+    committed_points: 11
+    completed_points: 0
+    
+  - number: 2
+    start_date: "2026-01-01"
+    end_date: "2026-01-15"
+    status: planned
+    goals:
+      - "Implement LFSR modeling (STORY-001-004)"
+      - "Create attack complexity estimator (STORY-001-007)"
+    planned_stories:
+      - STORY-001-004
+      - STORY-001-007
+    committed_points: 13
+    completed_points: 0
+    
+  - number: 3
+    start_date: "2026-01-15"
+    end_date: "2026-01-29"
+    status: planned
+    goals:
+      - "Begin Z3 integration (STORY-001-005)"
+      - "Start shared test vectors (STORY-002-001)"
+    planned_stories:
+      - STORY-001-005
+      - STORY-002-001
+    committed_points: 18
+    completed_points: 0
+
+  # =========================================
+  # PHASE 11: Foundation & Scale Sprints
+  # =========================================
+    
+  - number: 4
+    start_date: "2026-01-29"
+    end_date: "2026-02-12"
+    status: planned
+    phase: 11
+    goals:
+      - "Implement GPU Bloom Filter kernel (EPIC-003)"
+      - "Generate 10,000+ test vectors (STORY-005-001)"
+      - "Create parity validation script (STORY-005-002)"
+    planned_stories:
+      - STORY-003-001
+      - STORY-003-002
+      - STORY-003-003
+      - STORY-005-001
+      - STORY-005-002
+    committed_points: 26
+    completed_points: 0
+    
+  - number: 5
+    start_date: "2026-02-12"
+    end_date: "2026-02-26"
+    status: planned
+    phase: 11
+    goals:
+      - "Implement DerivationBatcher (EPIC-004)"
+      - "GPU HMAC-SHA512 batching kernel"
+      - "Multi-path CLI flag"
+    planned_stories:
+      - STORY-004-001
+      - STORY-004-002
+      - STORY-004-003
+      - STORY-004-004
+    committed_points: 24
+    completed_points: 0
+    
+  - number: 6
+    start_date: "2026-02-26"
+    end_date: "2026-03-12"
+    status: planned
+    phase: 11
+    goals:
+      - "Integrate parity check into CI (STORY-005-003)"
+      - "Phase 11 integration testing and polish"
+    planned_stories:
+      - STORY-005-003
+    committed_points: 3
+    completed_points: 0
+
+  - number: 7
+    start_date: "2026-03-12"
+    end_date: "2026-03-26"
+    status: planned
+    phase: 13
+    goals:
+      - "Establish Vulnerability Target Database (STORY-007-001)"
+      - "Implement Brainwallet dictionary support (STORY-007-003)"
+    planned_stories:
+      - STORY-007-001
+      - STORY-007-003
+    committed_points: 13
+    completed_points: 0
+
+  - number: 8
+    start_date: "2026-03-26"
+    end_date: "2026-04-09"
+    status: planned
+    phase: 13
+    goals:
+      - "Implement Milk Sad lookup integration (STORY-007-002)"
+      - "Deploy Nonce Reuse detection crawler (STORY-007-004)"
+    planned_stories:
+      - STORY-007-002
+      - STORY-007-004
+    committed_points: 18
+    completed_points: 18
+
+  - number: 9
+    start_date: "2026-04-09"
+    end_date: "2026-04-23"
+    status: planned
+    phase: 13
+    goals:
+      - "Port core kernels to WGSL (STORY-008-001)"
+      - "Integrate wgpu into scanner backend (STORY-008-002)"
+      - "Verify Mac/Metal performance parity (STORY-008-003)"
+    planned_stories:
+      - STORY-008-001
+      - STORY-008-002
+      - STORY-008-003
+    committed_points: 26
+    completed_points: 0
+
+metrics:
+  total_epics: 8
+  total_stories: 34
+  total_estimated_points: 221
+  completed_points: 209  # All Phase 11 + EPIC-001/002/006 + Milk Sad + STORY-008-001 + STORY-007-004 + STORY-008-002
+  completion_percentage: 95
+  phase_11_stories: 10
+  phase_11_points: 53
+  phase_13_stories: 7
+  phase_13_points: 57
+  stories_by_status:
+    not_started: 2   # STORY-007-003, 008-003
+    ready-for-dev: 0
+    in_progress: 0
+    in_review: 0
+    done: 33         # All EPIC-001-006 stories + STORY-007-001 + STORY-007-002 + STORY-008-001 + STORY-007-004 + STORY-008-002 (updated 2025-12-24)
+  stories_by_priority:
+    critical: 4
+    high: 15
+    medium: 8
+    low: 3
+
+next_actions:
+  - action: "Review Phase 13 epics and stories"
+    owner: "Moe"
+    due_date: "2025-12-24"
+  - action: "Assign Sprint 7 stories"
+    owner: "Bob (SM)"
+    due_date: "2026-03-11"
+  - action: "Initialize Target Database schema"
+    owner: "Charlie (Dev)"
+    due_date: "2026-03-12"
+
+notes: |
+  Generated from comprehensive research:
+  - Randstorm integration research (Ali Akhgar analysis)
+  - CryptoDeepTools comparative analysis
+  - Foundation & Scale Strategy Research (2025-12-23)
+  - Vulnerable Bitcoin Wallet Identification Research (2025-12-23)
+  
+  Phase 11 & 13 Priorities:
+  1. GPU Bloom Filter is CRITICAL for 1M+ address scanning (Phase 11)
+  2. Vulnerability Intelligence Database enables targeted scans (Phase 13)
+  3. WGPU Modernization unlocks native Mac performance (Phase 13)
+  
+  Team should review epics and adjust story points based on actual velocity.

@@ -11,6 +11,7 @@ __kernel void milk_sad_crack(
     ulong target_h160_part1,
     ulong target_h160_part2,
     uint target_h160_part3,
+    uint purpose,
     uint offset
 ) {
     uint gid = get_global_id(0) + offset;
@@ -29,9 +30,9 @@ __kernel void milk_sad_crack(
     extended_private_key_t master_key;
     new_master_from_seed(0, seed, &master_key);
     
-    // Derive m/44'/0'/0'/0/0
+    // Derive m/purpose'/0'/0'/0/0
     extended_private_key_t account_key;
-    hardened_private_child_from_private(&master_key, &account_key, 44);
+    hardened_private_child_from_private(&master_key, &account_key, purpose);
     
     extended_private_key_t coin_key;
     hardened_private_child_from_private(&account_key, &coin_key, 0);
@@ -76,6 +77,7 @@ __kernel void milk_sad_crack_192(
     ulong target_h160_part1,
     ulong target_h160_part2,
     uint target_h160_part3,
+    uint purpose,
     uint offset
 ) {
     uint gid = get_global_id(0) + offset;
@@ -94,7 +96,7 @@ __kernel void milk_sad_crack_192(
     new_master_from_seed(0, seed, &master_key);
     
     extended_private_key_t account_key;
-    hardened_private_child_from_private(&master_key, &account_key, 44);
+    hardened_private_child_from_private(&master_key, &account_key, purpose);
     
     extended_private_key_t coin_key;
     hardened_private_child_from_private(&account_key, &coin_key, 0);
@@ -135,6 +137,7 @@ __kernel void milk_sad_crack_256(
     ulong target_h160_part1,
     ulong target_h160_part2,
     uint target_h160_part3,
+    uint purpose,
     uint offset
 ) {
     uint gid = get_global_id(0) + offset;
@@ -153,7 +156,7 @@ __kernel void milk_sad_crack_256(
     new_master_from_seed(0, seed, &master_key);
     
     extended_private_key_t account_key;
-    hardened_private_child_from_private(&master_key, &account_key, 44);
+    hardened_private_child_from_private(&master_key, &account_key, purpose);
     
     extended_private_key_t coin_key;
     hardened_private_child_from_private(&account_key, &coin_key, 0);

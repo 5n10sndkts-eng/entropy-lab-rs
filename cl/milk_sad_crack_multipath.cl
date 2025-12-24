@@ -14,15 +14,15 @@ __kernel void milk_sad_crack_multipath(
     uint timestamp = offset + gid;
     
     // Generate entropy from timestamp using MT19937
-    unsigned int entropy256[8];
+    uint entropy256[8];
     generate_entropy_from_timestamp(timestamp, entropy256);
     
     // Generate HD seed from entropy
-    unsigned int seed512[16];
+    uint seed512[16];
     bip39_entropy_to_seed(entropy256, seed512);
     
     // Derive master key
-    unsigned int chain_code[8], private_key[8];
+    uint chain_code[8], private_key[8];
     bip32_master_from_seed(seed512, private_key, chain_code);
     
     // BIP44 path: m/44'/0'/0'
@@ -33,7 +33,7 @@ __kernel void milk_sad_crack_multipath(
     
     // Now we're at m/44'/0'/0'
     // Save this as the base for all subsequent derivations
-    unsigned int base_private_key[8], base_chain_code[8];
+    uint base_private_key[8], base_chain_code[8];
     for (int i = 0; i < 8; i++) {
         base_private_key[i] = private_key[i];
         base_chain_code[i] = chain_code[i];
@@ -54,7 +54,7 @@ __kernel void milk_sad_crack_multipath(
         bip32_ckd_normal(private_key, chain_code, addr_idx, private_key, chain_code);
         
         // Generate public key
-        unsigned int pubkey_x[8], pubkey_y[8];
+        uint pubkey_x[8], pubkey_y[8];
         secp256k1_get_pubkey(private_key, pubkey_x, pubkey_y);
         
         // Compress public key
@@ -102,7 +102,7 @@ __kernel void milk_sad_crack_multipath(
         bip32_ckd_normal(private_key, chain_code, addr_idx, private_key, chain_code);
         
         // Generate public key
-        unsigned int pubkey_x[8], pubkey_y[8];
+        uint pubkey_x[8], pubkey_y[8];
         secp256k1_get_pubkey(private_key, pubkey_x, pubkey_y);
         
         // Compress public key

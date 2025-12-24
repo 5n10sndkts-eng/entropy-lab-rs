@@ -16,6 +16,14 @@ pub struct WgpuScanner {
     keys_checked: Arc<AtomicU64>,
     running: Arc<AtomicBool>,
     engine_type: u32,
+    
+    // Persistent buffers to avoid allocation overhead in main loop
+    fp_buffer: Option<wgpu::Buffer>,
+    bloom_buffer: Option<wgpu::Buffer>,
+    result_buffer: Option<wgpu::Buffer>,
+    staging_buffer: Option<wgpu::Buffer>,
+    bind_group: Option<wgpu::BindGroup>,
+    current_batch_capacity: usize,
 }
 
 impl WgpuScanner {
@@ -129,6 +137,12 @@ impl WgpuScanner {
             keys_checked: Arc::new(AtomicU64::new(0)),
             running: Arc::new(AtomicBool::new(true)),
             engine_type,
+            fp_buffer: None,
+            bloom_buffer: None,
+            result_buffer: None,
+            staging_buffer: None,
+            bind_group: None,
+            current_batch_capacity: 0,
         })
     }
 
@@ -147,52 +161,75 @@ impl WgpuScanner {
             });
         }
 
-        // Pack fingerprints: [timestamp (u64), width (u32), height (u32)] -> 16 bytes
+        // 1. Ensure buffers and bind groups are allocated and have enough capacity
+        if self.current_batch_capacity < batch_size {
+            let fp_size = (batch_size * 16) as u64;
+            let bloom_size = bloom_filter.len() as u64;
+            let result_size = (batch_size * 64) as u64;
+
+            self.fp_buffer = Some(self.device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some("Fingerprint Buffer"),
+                size: fp_size,
+                usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+                mapped_at_creation: false,
+            }));
+
+            self.bloom_buffer = Some(self.device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some("Bloom Buffer"),
+                size: bloom_size,
+                usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+                mapped_at_creation: false,
+            }));
+
+            self.result_buffer = Some(self.device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some("Result Buffer"),
+                size: result_size,
+                usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
+                mapped_at_creation: false,
+            }));
+
+            self.staging_buffer = Some(self.device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some("Staging Buffer"),
+                size: result_size,
+                usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
+                mapped_at_creation: false,
+            }));
+
+            self.bind_group = Some(self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+                label: Some("Randstorm Bind Group"),
+                layout: &self.bind_group_layout,
+                entries: &[
+                    wgpu::BindGroupEntry {
+                        binding: 0,
+                        resource: self.fp_buffer.as_ref().unwrap().as_entire_binding(),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 1,
+                        resource: self.bloom_buffer.as_ref().unwrap().as_entire_binding(),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 2,
+                        resource: self.result_buffer.as_ref().unwrap().as_entire_binding(),
+                    },
+                ],
+            }));
+
+            self.current_batch_capacity = batch_size;
+            
+            // Initial bloom write (usually doesn't change)
+            self.queue.write_buffer(self.bloom_buffer.as_ref().unwrap(), 0, bloom_filter);
+        }
+
+        // 2. Pack and write fingerprints
         let mut fp_data = Vec::with_capacity(batch_size * 16);
         for fp in fingerprints {
             fp_data.extend_from_slice(&fp.timestamp_ms.to_ne_bytes());
             fp_data.extend_from_slice(&(fp.screen_width as u32).to_ne_bytes());
             fp_data.extend_from_slice(&(fp.screen_height as u32).to_ne_bytes());
         }
+        self.queue.write_buffer(self.fp_buffer.as_ref().unwrap(), 0, &fp_data);
 
-        let fp_buffer = self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("Fingerprint Buffer"),
-            contents: &fp_data,
-            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
-        });
-
-        let bloom_buffer = self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("Bloom Buffer"),
-            contents: bloom_filter,
-            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
-        });
-
-        let result_buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("Result Buffer"),
-            size: (batch_size * 64) as u64, // 16 u32s per fingerprint to be safe
-            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
-            mapped_at_creation: false,
-        });
-
-        let bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("Randstorm Bind Group"),
-            layout: &self.bind_group_layout,
-            entries: &[
-                wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: fp_buffer.as_entire_binding(),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 1,
-                    resource: bloom_buffer.as_entire_binding(),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 2,
-                    resource: result_buffer.as_entire_binding(),
-                },
-            ],
-        });
-
+        // 3. Encode and submit compute pass
         let mut encoder = self.device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
             label: Some("Randstorm Command Encoder"),
         });
@@ -203,26 +240,26 @@ impl WgpuScanner {
                 timestamp_writes: None,
             });
             cpass.set_pipeline(&self.pipeline);
-            cpass.set_bind_group(0, &bind_group, &[]);
+            cpass.set_bind_group(0, self.bind_group.as_ref().unwrap(), &[]);
             let workgroup_count = (batch_size as u32 + 63) / 64;
             cpass.dispatch_workgroups(workgroup_count, 1, 1);
         }
 
-        let staging_buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("Staging Buffer"),
-            size: (batch_size * 64) as u64,
-            usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
-            mapped_at_creation: false,
-        });
-
-        encoder.copy_buffer_to_buffer(&result_buffer, 0, &staging_buffer, 0, (batch_size * 64) as u64);
+        let result_size = (batch_size * 64) as u64;
+        encoder.copy_buffer_to_buffer(
+            self.result_buffer.as_ref().unwrap(), 0, 
+            self.staging_buffer.as_ref().unwrap(), 0, 
+            result_size
+        );
 
         self.queue.submit(Some(encoder.finish()));
 
-        // Map and read back
-        let buffer_slice = staging_buffer.slice(..);
+        // 4. Map and read back
+        let buffer_slice = self.staging_buffer.as_ref().unwrap().slice(..);
         let (sender, receiver) = std::sync::mpsc::channel();
-        buffer_slice.map_async(wgpu::MapMode::Read, move |v| sender.send(v).unwrap());
+        buffer_slice.map_async(wgpu::MapMode::Read, move |v| {
+            let _ = sender.send(v);
+        });
 
         self.device.poll(wgpu::Maintain::Wait);
 
@@ -234,11 +271,8 @@ impl WgpuScanner {
             let secp = Secp256k1::new();
             for idx in 0..batch_size {
                 let base = idx * 16;
-                // Check hit flag (index 8)
                 if _results[base + 8] != 0 {
                     let fp = &fingerprints[idx];
-                    // We can either use the GPU's privkey or re-derive it.
-                    // For now, re-deriving on CPU is a safe second-factor verification.
                     if let Ok(sk) = self.derive_key_from_fingerprint(fp) {
                         let pk = PublicKey::from_secret_key(&secp, &sk);
                         let addr = crate::scans::randstorm::derivation::derive_p2pkh_address(&pk);
@@ -253,7 +287,7 @@ impl WgpuScanner {
             }
             
             drop(data);
-            staging_buffer.unmap();
+            self.staging_buffer.as_ref().unwrap().unmap();
             
             let elapsed_ms = start_time.elapsed().as_millis() as u64;
             self.keys_checked.fetch_add(batch_size as u64, Ordering::Relaxed);
@@ -360,6 +394,5 @@ mod tests {
         // 4. Verify hit
         assert_eq!(result.matches_found.len(), 1, "GPU should have matched the test vector");
         assert_eq!(result.matches_found[0].private_key.as_ref(), &privkey_bytes[..]);
-        println!("✅ WGSL Hashing Parity Verified!");
     }
 }

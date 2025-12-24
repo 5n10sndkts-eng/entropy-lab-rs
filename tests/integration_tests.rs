@@ -26,14 +26,14 @@ fn test_cake_wallet_cpu_scan_integration() {
     // Run a small scan (only 10 seeds) to verify it doesn't panic and produces output
     // Note: We are testing the library function directly here, not the CLI command.
     // This requires 'entropy-lab-rs' to be a library crate exposing 'scans'.
-    let result = entropy_lab_rs::scans::cake_wallet::run(Some(10));
+    let result = temporal_planetarium_lib::scans::cake_wallet::run(Some(10));
     assert!(result.is_ok(), "Cake Wallet CPU scan failed");
 }
 
 /// Test BIP49 addresses with 24-word mnemonics for Research Update #13
 #[test]
 fn test_research_update_13_requirements() {
-    use entropy_lab_rs::scans::milk_sad::{
+    use temporal_planetarium_lib::scans::milk_sad::{
         generate_address_from_entropy_vec, generate_entropy_msb, AddressType, EntropySize,
     };
 

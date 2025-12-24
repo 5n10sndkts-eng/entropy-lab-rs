@@ -41,7 +41,7 @@ static int secp256k1_scalar_check_overflow(const secp256k1_scalar *a) {
     return yes;
 }
 
-static void secp256k1_scalar_set_int(secp256k1_scalar *r, unsigned int v) {
+static void secp256k1_scalar_set_int(secp256k1_scalar *r, uint v) {
   r->d[0] = v;
   r->d[1] = 0;
   r->d[2] = 0;
@@ -133,6 +133,6 @@ static void secp256k1_scalar_clear(secp256k1_scalar *r) {
   r->d[7] = 0;
 }
 
-static unsigned int secp256k1_scalar_get_bits(const secp256k1_scalar *a, unsigned int offset, unsigned int count) {
+static uint secp256k1_scalar_get_bits(const secp256k1_scalar *a, uint offset, uint count) {
   return (a->d[offset >> 5] >> (offset & 0x1F)) & ((1 << count) - 1);
 }

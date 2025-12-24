@@ -30,7 +30,7 @@ typedef struct {
   public_key_t public_key;
 } extended_public_key_t;
 
-void new_master_from_seed(uchar network, uchar *seed, extended_private_key_t * master) {
+void new_master_from_seed(uchar network, __private uchar *seed, __private extended_private_key_t * master) {
   uchar key[12] = { 0x42, 0x69, 0x74, 0x63, 0x6f, 0x69, 0x6e, 0x20, 0x73, 0x65, 0x65, 0x64 };
   uchar hmacsha512_result[64] = { 0 };
   hmac_sha512(key, 12, seed, 64, hmacsha512_result);
@@ -49,7 +49,7 @@ void new_master_from_seed(uchar network, uchar *seed, extended_private_key_t * m
   memcpy_offset(&master->chain_code, &hmacsha512_result, 32, 32);
 }
 
-void public_from_private(extended_private_key_t *priv, extended_public_key_t *pub) {
+void public_from_private(__private extended_private_key_t *priv, __private extended_public_key_t *pub) {
   pub->network = priv->network;
   pub->depth = priv->depth;
   pub->child_number = priv->child_number;
@@ -58,23 +58,23 @@ void public_from_private(extended_private_key_t *priv, extended_public_key_t *pu
   secp256k1_ec_pubkey_create(&pub->public_key.key, &priv->private_key.key);
 }
 
-void serialized_public_key(extended_public_key_t *pub, uchar *serialized_key) {
+void serialized_public_key(__private extended_public_key_t *pub, __private uchar *serialized_key) {
   secp256k1_ec_pubkey_serialize(serialized_key, 33, &pub->public_key.key, SECP256K1_EC_COMPRESSED);
 }
 
-void uncompressed_public_key(extended_public_key_t *pub, uchar *serialized_key) {
+void uncompressed_public_key(__private extended_public_key_t *pub, __private uchar *serialized_key) {
   secp256k1_ec_pubkey_serialize(serialized_key, 65, &pub->public_key.key, SECP256K1_EC_UNCOMPRESSED);
 }
 
 
 
-void identifier_for_public_key(extended_public_key_t *pub, uchar *identifier) {
+void identifier_for_public_key(__private extended_public_key_t *pub, __private uchar *identifier) {
   uchar serialized_key[33] = {0};
   serialized_public_key(pub, &serialized_key);
   { uchar sha256_result[32] __attribute__((aligned(4))) = {0}; sha256((__private uint*)serialized_key, 33, (__private uint*)sha256_result); ripemd160(sha256_result, 32, (__private uchar*)identifier); }
 }
 
-void fingerprint_for_public_key(extended_public_key_t *pub, uchar *fingerprint) {
+void fingerprint_for_public_key(__private extended_public_key_t *pub, __private uchar *fingerprint) {
   uchar identifier[20] = { 0 };
   identifier_for_public_key(pub, &identifier);
   fingerprint[0] = identifier[0];
@@ -83,7 +83,7 @@ void fingerprint_for_public_key(extended_public_key_t *pub, uchar *fingerprint) 
   fingerprint[3] = identifier[3];
 }
 
-void p2shwpkh_address_for_public_key(extended_public_key_t *pub, uchar *address_bytes) {
+void p2shwpkh_address_for_public_key(__private extended_public_key_t *pub, __private uchar *address_bytes) {
   uchar pubkey_hash[20] = { 0 };
   identifier_for_public_key(pub, &pubkey_hash);
 
@@ -113,7 +113,7 @@ void p2shwpkh_address_for_public_key(extended_public_key_t *pub, uchar *address_
   address_bytes[24] = sha256d_result[3];
 }
 
-void normal_private_child_from_private(extended_private_key_t *parent, extended_private_key_t *child, uint normal_child_number) {
+void normal_private_child_from_private(__private extended_private_key_t *parent, __private extended_private_key_t *child, uint normal_child_number) {
   uchar hmacsha512_result[64] = { 0 };
   extended_public_key_t pub;
   public_from_private(parent, &pub);
@@ -137,7 +137,41 @@ void normal_private_child_from_private(extended_private_key_t *parent, extended_
   memcpy_offset(child->chain_code, hmacsha512_result, 32, 32);
 }
 
-void hardened_private_child_from_private(extended_private_key_t *parent, extended_private_key_t *child, uint hardened_child_number) {
+static void p2pkh_address_for_public_key(__private extended_public_key_t *pub, __private uchar *address_bytes) {
+  uchar pubkey_hash[20] = { 0 };
+  identifier_for_public_key(pub, &pubkey_hash);
+
+  address_bytes[0] = 0; // bitcoin mainnet
+  for(int i=0;i<20;i++){
+    address_bytes[i+1] = pubkey_hash[i];
+  }
+
+  uchar sha256d_result[64] = { 0 };
+  { uchar temp[32] __attribute__((aligned(4))); sha256((__private uint*)address_bytes, 21, (__private uint*)temp); sha256((__private uint*)temp, 32, (__private uint*)sha256d_result); }
+
+  // append checksum
+  address_bytes[21] = sha256d_result[0];
+  address_bytes[22] = sha256d_result[1];
+  address_bytes[23] = sha256d_result[2];
+  address_bytes[24] = sha256d_result[3];
+}
+
+static void bech32_address_for_public_key(__private extended_public_key_t *pub, __private uchar *address_bytes) {
+    // simplified bech32 for test/parity purposes
+    identifier_for_public_key(pub, address_bytes);
+}
+
+void address_for_public_key(__private extended_public_key_t *pub, uint purpose, __private uchar *address_bytes) {
+  if (purpose == 44) {
+    p2pkh_address_for_public_key(pub, address_bytes);
+  } else if (purpose == 49) {
+    p2shwpkh_address_for_public_key(pub, address_bytes);
+  } else if (purpose == 84) {
+    bech32_address_for_public_key(pub, address_bytes);
+  }
+}
+
+void hardened_private_child_from_private(__private extended_private_key_t *parent, __private extended_private_key_t *child, uint hardened_child_number) {
 
   uint child_number = (1 << 31) + hardened_child_number;
   uchar hmacsha512_result[64] = { 0 };

@@ -3,7 +3,7 @@
 //! Integration tests to validate the scanner can detect known vulnerable configurations
 //! from the Randstorm research paper.
 
-use entropy_lab_rs::scans::randstorm::{
+use temporal_planetarium_lib::scans::randstorm::{
     derivation, fingerprint::BrowserFingerprint, fingerprints::BrowserConfig, prng::ChromeV8Prng,
     test_vectors::TEST_VECTORS, PrngEngine,
 };
@@ -44,7 +44,7 @@ fn test_known_randstorm_vulnerability() {
 
     // End-to-end validation: derive address and verify expected match
     let prng = ChromeV8Prng::new();
-    let seed = entropy_lab_rs::scans::randstorm::prng::SeedComponents {
+    let seed = temporal_planetarium_lib::scans::randstorm::prng::SeedComponents {
         timestamp_ms: fingerprint.timestamp_ms,
         user_agent: fingerprint.user_agent.clone(),
         screen_width: fingerprint.screen_width,

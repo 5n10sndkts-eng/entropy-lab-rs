@@ -55,7 +55,7 @@ mod gpu_cpu_tests {
         println!("Testing 5 test seeds to validate GPU kernel byte order fix\n");
 
         // Initialize GPU solver
-        let gpu_solver = match entropy_lab_rs::scans::gpu_solver::GpuSolver::new() {
+        let gpu_solver = match temporal_planetarium_lib::scans::gpu_solver::GpuSolver::new() {
             Ok(solver) => solver,
             Err(e) => {
                 println!("⚠️  GPU not available ({}), skipping test", e);
@@ -130,7 +130,7 @@ mod gpu_cpu_tests {
         println!("Testing 20 random seeds for comprehensive validation\n");
 
         // Initialize GPU solver
-        let gpu_solver = match entropy_lab_rs::scans::gpu_solver::GpuSolver::new() {
+        let gpu_solver = match temporal_planetarium_lib::scans::gpu_solver::GpuSolver::new() {
             Ok(solver) => solver,
             Err(e) => {
                 println!("⚠️  GPU not available ({}), skipping test", e);
@@ -186,7 +186,7 @@ mod gpu_cpu_tests {
     fn test_gpu_batch_processing() {
         println!("\n=== GPU Batch Processing Test ===\n");
 
-        let gpu_solver = match entropy_lab_rs::scans::gpu_solver::GpuSolver::new() {
+        let gpu_solver = match temporal_planetarium_lib::scans::gpu_solver::GpuSolver::new() {
             Ok(solver) => solver,
             Err(e) => {
                 println!("⚠️  GPU not available ({}), skipping test", e);

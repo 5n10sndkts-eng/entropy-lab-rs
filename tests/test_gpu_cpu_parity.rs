@@ -6,9 +6,9 @@ mod tests {
     use bitcoin::bip32::{DerivationPath, Xpriv};
     use bitcoin::secp256k1::{Secp256k1, SecretKey};
     use bitcoin::{Address, CompressedPublicKey, Network};
-    use entropy_lab_rs::scans::gpu_solver::GpuSolver;
-    use entropy_lab_rs::scans::milk_sad;
-    use entropy_lab_rs::utils::electrum;
+    use temporal_planetarium_lib::scans::gpu_solver::GpuSolver;
+    use temporal_planetarium_lib::scans::milk_sad;
+    use temporal_planetarium_lib::utils::electrum;
     use std::str::FromStr;
 
     #[test]
