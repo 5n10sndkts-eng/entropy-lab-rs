@@ -88,6 +88,10 @@ name = "gpu_derivation_benchmark"
 harness = false
 required-features = ["gpu"]
 
+[[bench]]
+name = "brainwallet_benchmark"
+harness = false
+
 [dev-dependencies]
 criterion = "0.8.1"
 tempfile = "3.23.0"
@@ -147,3 +151,15 @@ path = "../../tests/verify_rpc.rs"
 [[test]]
 name = "test_nonce_reuse_integration"
 path = "../../tests/test_nonce_reuse_integration.rs"
+
+[[test]]
+name = "test_brainwallet_import"
+path = "../../tests/test_brainwallet_import.rs"
+
+[[test]]
+name = "test_cli_brainwallet"
+path = "../../tests/test_cli_brainwallet.rs"
+
+[[test]]
+name = "randstorm_integration"
+path = "../../tests/randstorm_integration.rs"

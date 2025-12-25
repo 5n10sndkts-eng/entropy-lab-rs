@@ -1,24 +1,31 @@
-/// Chrome V8 MWC1616 PRNG Implementation
-///
-/// Chrome versions 14-45 (2011-2015) used the MWC1616 (Multiply-With-Carry)
-/// algorithm for Math.random(). This PRNG had insufficient entropy for
-/// cryptographic key generation.
-///
-/// # Algorithm: MWC1616
-///
-/// ```text
-/// s1 = 18000 * (s1 & 0xFFFF) + (s1 >> 16)
-/// s2 = 30903 * (s2 & 0xFFFF) + (s2 >> 16)
-/// result = (s1 << 16) + s2
-/// ```
-///
-/// Period: 2^32 (~4 billion states)
-///
-/// # References
-///
-/// - V8 source: https://github.com/v8/v8/blob/3.14.5.9/src/math.cc
-/// - Randstorm disclosure: Section 2.1
+//! Chrome V8 MWC1616 PRNG Implementation
+//!
+//! Chrome versions 14-45 (2011-2015) used the MWC1616 (Multiply-With-Carry)
+//! algorithm for Math.random(). This PRNG had insufficient entropy for
+//! cryptographic key generation.
+//!
+//! # Algorithm: MWC1616
+//!
+//! ```text
+//! s1 = 18000 * (s1 & 0xFFFF) + (s1 >> 16)
+//! s2 = 30903 * (s2 & 0xFFFF) + (s2 >> 16)
+//! result = (s1 << 16) + s2
+//! ```
+//!
+//! Period: 2^32 (~4 billion states)
+//!
+//! # References
+//!
+//! - V8 source: https://github.com/v8/v8/blob/3.14.5.9/src/math.cc
+//! - Randstorm disclosure: Section 2.1
+
+#![deny(clippy::float_arithmetic)]
+#![deny(clippy::float_cmp)]
+#![deny(clippy::float_cmp_const)]
+
 use super::{BrowserVersion, PrngEngine, PrngState, SeedComponents};
+use crate::scans::randstorm::core_types::ChromeV8State;
+use crate::scans::randstorm::engines::V8Reference;
 use sha2::{Digest, Sha256};
 
 pub struct ChromeV8Prng {
@@ -71,30 +78,28 @@ impl PrngEngine for ChromeV8Prng {
     }
 
     fn generate_bytes(&self, state: &PrngState, count: usize) -> Vec<u8> {
-        let mut s1 = state.s1;
-        let mut s2 = state.s2;
+        // Delegate to V8Reference (Golden Reference) for MWC1616 step
+        // This ensures all callers use the same bit-perfect implementation.
+        let mut chrome_state = ChromeV8State {
+            s1: state.s1,
+            s2: state.s2,
+        };
         let mut result = Vec::with_capacity(count);
 
-        // Generate bytes using MWC1616 algorithm
+        // Generate bytes using MWC1616 algorithm via Golden Reference
         for _ in 0..(count / 4) {
-            // MWC1616 step
-            s1 = 18000_u32.wrapping_mul(s1 & 0xFFFF) + (s1 >> 16);
-            s2 = 30903_u32.wrapping_mul(s2 & 0xFFFF) + (s2 >> 16);
+            // MWC1616 step via V8Reference (Integer Isolation Law compliant)
+            let value = V8Reference::next_state(&mut chrome_state);
 
-            // Combine states
-            let value = ((s1 as u64) << 16) + (s2 as u64);
-
-            // Extract 4 bytes
-            result.extend_from_slice(&(value as u32).to_le_bytes());
+            // Extract 4 bytes (little-endian)
+            result.extend_from_slice(&value.to_le_bytes());
         }
 
         // Handle remaining bytes
         let remainder = count % 4;
         if remainder > 0 {
-            s1 = 18000_u32.wrapping_mul(s1 & 0xFFFF) + (s1 >> 16);
-            s2 = 30903_u32.wrapping_mul(s2 & 0xFFFF) + (s2 >> 16);
-            let value = ((s1 as u64) << 16) + (s2 as u64);
-            let bytes = (value as u32).to_le_bytes();
+            let value = V8Reference::next_state(&mut chrome_state);
+            let bytes = value.to_le_bytes();
             result.extend_from_slice(&bytes[0..remainder]);
         }
 

@@ -5,7 +5,7 @@ use std::path::PathBuf;
 use temporal_planetarium_lib::utils::db::{TargetDatabase, Target};
 use temporal_planetarium_lib::utils::encryption::{decrypt_private_key, EncryptedData, DEFAULT_ENCRYPTION_PASSPHRASE};
 use tracing::{info, warn};
-use chrono::{DateTime, Utc};
+use chrono::DateTime;
 
 pub enum OutputFormat {
     Table,
@@ -40,7 +40,21 @@ pub fn run(
         warn!("⚠️  WARNING: Using default encryption passphrase.");
     }
 
-    let db = TargetDatabase::new(db_path)?;
+    // Critical security warning when showing keys
+    if show_keys {
+        eprintln!();
+        eprintln!("╔══════════════════════════════════════════════════════════════════╗");
+        eprintln!("║  ⚠️  SECURITY WARNING: Private keys will be displayed!           ║");
+        eprintln!("║                                                                  ║");
+        eprintln!("║  • Ensure no one is watching your screen                         ║");
+        eprintln!("║  • Do not copy/paste keys into insecure locations                ║");
+        eprintln!("║  • Clear terminal history after viewing (history -c)             ║");
+        eprintln!("║  • Consider redirecting output to encrypted file instead         ║");
+        eprintln!("╚══════════════════════════════════════════════════════════════════╝");
+        eprintln!();
+    }
+
+    let db = TargetDatabase::new(db_path.clone())?;
 
     // Query all nonce_reuse targets
     let targets = db.query_by_class("nonce_reuse", 10000)?;
@@ -53,15 +67,15 @@ pub fn run(
     info!("Found {} recovered key(s)", targets.len());
 
     match format {
-        OutputFormat::Table => print_table(&targets, &passphrase, show_keys)?,
-        OutputFormat::Json => print_json(&targets, &passphrase, show_keys)?,
-        OutputFormat::Csv => print_csv(&targets, &passphrase, show_keys)?,
+        OutputFormat::Table => print_table(&targets, &passphrase, show_keys, &db)?,
+        OutputFormat::Json => print_json(&targets, &passphrase, show_keys, &db)?,
+        OutputFormat::Csv => print_csv(&targets, &passphrase, show_keys, &db)?,
     }
 
     Ok(())
 }
 
-fn print_table(targets: &[Target], passphrase: &str, show_keys: bool) -> Result<()> {
+fn print_table(targets: &[Target], passphrase: &str, show_keys: bool, db: &TargetDatabase) -> Result<()> {
     println!("\n{}", "=".repeat(120));
     println!("{:<45} {:<15} {:<15} {:<20} {:<25}",
         "Address", "Status", "Access Count", "Last Accessed", "Recovery Date");
@@ -103,6 +117,10 @@ fn print_table(targets: &[Target], passphrase: &str, show_keys: bool) -> Result<
             match decrypt_key(target, passphrase) {
                 Ok(wif) => {
                     println!("  🔓 WIF: {}", wif);
+                    // Track key access (AC3 requirement)
+                    if let Err(e) = db.update_access_tracking(&target.address) {
+                        warn!("  ⚠️  Failed to update access tracking: {}", e);
+                    }
                 }
                 Err(e) => {
                     warn!("  ❌ Decryption failed for {}: {}", target.address, e);
@@ -121,7 +139,7 @@ fn print_table(targets: &[Target], passphrase: &str, show_keys: bool) -> Result<
     Ok(())
 }
 
-fn print_json(targets: &[Target], passphrase: &str, show_keys: bool) -> Result<()> {
+fn print_json(targets: &[Target], passphrase: &str, show_keys: bool, db: &TargetDatabase) -> Result<()> {
     let mut entries = Vec::new();
 
     for target in targets {
@@ -137,6 +155,8 @@ fn print_json(targets: &[Target], passphrase: &str, show_keys: bool) -> Result<(
         if show_keys {
             if let Ok(wif) = decrypt_key(target, passphrase) {
                 entry["private_key_wif"] = serde_json::json!(wif);
+                // Track key access (AC3 requirement)
+                let _ = db.update_access_tracking(&target.address);
             } else {
                 entry["private_key_wif"] = serde_json::json!(null);
                 entry["decryption_error"] = serde_json::json!(true);
@@ -155,7 +175,7 @@ fn print_json(targets: &[Target], passphrase: &str, show_keys: bool) -> Result<(
     Ok(())
 }
 
-fn print_csv(targets: &[Target], passphrase: &str, show_keys: bool) -> Result<()> {
+fn print_csv(targets: &[Target], passphrase: &str, show_keys: bool, db: &TargetDatabase) -> Result<()> {
     // CSV header
     if show_keys {
         println!("address,status,access_count,last_accessed,recovery_date,private_key_wif");
@@ -166,14 +186,11 @@ fn print_csv(targets: &[Target], passphrase: &str, show_keys: bool) -> Result<()
     for target in targets {
         let last_accessed = target.last_accessed
             .map(|ts| ts.to_string())
-            .unwrap_or_else(|| "".to_string());
+            .unwrap_or_default();
 
         let recovery_date = if let Some(ref metadata) = target.metadata_json {
             if let Ok(json) = serde_json::from_str::<serde_json::Value>(metadata) {
-                json["recovery_date"]
-                    .as_str()
-                    .unwrap_or("")
-                    .to_string()
+                csv_escape(json["recovery_date"].as_str().unwrap_or(""))
             } else {
                 String::new()
             }
@@ -182,21 +199,27 @@ fn print_csv(targets: &[Target], passphrase: &str, show_keys: bool) -> Result<()
         };
 
         if show_keys {
-            let wif = decrypt_key(target, passphrase)
-                .unwrap_or_else(|_| "DECRYPTION_FAILED".to_string());
+            let wif = match decrypt_key(target, passphrase) {
+                Ok(w) => {
+                    // Track key access (AC3 requirement)
+                    let _ = db.update_access_tracking(&target.address);
+                    w
+                }
+                Err(_) => "DECRYPTION_FAILED".to_string(),
+            };
 
             println!("{},{},{},{},{},{}",
-                target.address,
-                target.status,
+                csv_escape(&target.address),
+                csv_escape(&target.status),
                 target.access_count,
                 last_accessed,
                 recovery_date,
-                wif
+                csv_escape(&wif)
             );
         } else {
             println!("{},{},{},{},{}",
-                target.address,
-                target.status,
+                csv_escape(&target.address),
+                csv_escape(&target.status),
                 target.access_count,
                 last_accessed,
                 recovery_date
@@ -205,6 +228,15 @@ fn print_csv(targets: &[Target], passphrase: &str, show_keys: bool) -> Result<()
     }
 
     Ok(())
+}
+
+/// Escape a string for CSV output (RFC 4180 compliant)
+fn csv_escape(s: &str) -> String {
+    if s.contains(',') || s.contains('"') || s.contains('\n') || s.contains('\r') {
+        format!("\"{}\"", s.replace('"', "\"\""))
+    } else {
+        s.to_string()
+    }
 }
 
 fn decrypt_key(target: &Target, passphrase: &str) -> Result<String> {

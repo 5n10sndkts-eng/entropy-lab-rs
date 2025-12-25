@@ -1,4 +1,5 @@
 // CLI Command Modules
 
-pub mod nonce_crawler;
+pub mod brainwallet_import;
 pub mod list_keys;
+pub mod nonce_crawler;

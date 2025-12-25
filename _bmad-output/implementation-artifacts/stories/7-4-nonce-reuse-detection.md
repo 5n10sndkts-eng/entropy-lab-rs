@@ -57,7 +57,7 @@ so that I can identify vulnerable addresses and populate the vulnerability intel
   - [x] Detect duplicate r-values in real-time during scan
   - [x] Log collision events with txid pairs for manual verification
   - [x] Implement DER signature parsing validation (handle malformed sigs)
-  - [ ] Add unit tests for DER parsing edge cases (PENDING - integration tests cover functionality)
+  - [x] Add unit tests for DER parsing edge cases (8 edge case tests added)
 
 - [x] **Task 3: Integrate Private Key Recovery** (AC: #1)
   - [x] Use existing `recover_privkey_from_nonce_reuse()` from forensics.rs
@@ -503,6 +503,24 @@ Claude Opus 4.5 (claude-opus-4-5-20251101)
    - Enhanced CLI documentation with security best practices
    - Clarified test file locations (encryption.rs has 20 unit tests, test_nonce_reuse_integration.rs has 6 integration tests)
 
+8. **Adversarial Code Review Fixes (2025-12-25)**:
+   - ❌ DELETED: `src/bin/nonce_crawler.rs` - duplicate 512-line binary removed
+   - ✅ REFACTORED: `commands/nonce_crawler.rs` now uses lib `NonceCrawler` (347→144 lines)
+   - ✅ ADDED: `--last-n-blocks` CLI flag (was missing despite story claiming it existed)
+   - ✅ ADDED: `--rate-limit-ms` CLI flag with 50ms default to avoid overwhelming RPC nodes
+   - ✅ ADDED: `CrawlerConfig.rate_limit_ms` field with rate limiting in scan loop
+   - ✅ ADDED: `NonceCrawler::get_blockchain_info()` public method
+   - ✅ FIXED: Removed unused imports (`error`, `Hash`, `Utc`) reducing compiler warnings
+   - All 160 tests pass (154 lib + 6 integration)
+
+9. **Second Code Review Fixes (2025-12-25)**:
+   - ✅ FIXED AC3: `list_keys` now calls `db.update_access_tracking()` after decryption (all 3 output formats)
+   - ✅ ADDED: RFC 4180-compliant CSV escaping via `csv_escape()` helper function
+   - ✅ ADDED: 8 new DER parsing edge case tests (empty, missing marker, truncated R/S, leading zero, min valid, too short)
+   - ✅ FIXED: Removed unused `warn` import from `encryption.rs`
+   - Task 2.5 now complete: 12 nonce_reuse unit tests total
+   - All tests pass: 162 lib tests + 6 integration tests
+
 ### File List
 
 **Modified Files:**
@@ -519,8 +537,11 @@ Claude Opus 4.5 (claude-opus-4-5-20251101)
 
 **New Files:**
 - `crates/temporal-planetarium-lib/src/utils/encryption.rs` - AES-256-GCM encryption module with 20 unit tests
-- `crates/temporal-planetarium-lib/src/scans/nonce_reuse/mod.rs` - NonceCrawler implementation with R-value indexing
+- `crates/temporal-planetarium-lib/src/scans/nonce_reuse/mod.rs` - NonceCrawler implementation with R-value indexing, rate limiting
 - `crates/temporal-planetarium-cli/src/commands/mod.rs` - CLI command module registry
-- `crates/temporal-planetarium-cli/src/commands/nonce_crawler.rs` - Full crawler CLI implementation
+- `crates/temporal-planetarium-cli/src/commands/nonce_crawler.rs` - Thin CLI wrapper using lib NonceCrawler (144 lines)
 - `crates/temporal-planetarium-cli/src/commands/list_keys.rs` - Key listing/decryption CLI
 - `tests/test_nonce_reuse_integration.rs` - 6 integration tests (key recovery, encryption, database, access tracking)
+
+**Deleted Files (Code Review Cleanup):**
+- `crates/temporal-planetarium-lib/src/bin/nonce_crawler.rs` - Duplicate 512-line binary removed

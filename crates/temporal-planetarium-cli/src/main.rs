@@ -265,6 +265,12 @@ enum Commands {
         /// Signature S-value 2 (hex)
         #[arg(long)]
         s2: String,
+        /// Output file for encrypted private key (REQUIRED for security)
+        #[arg(long)]
+        output: std::path::PathBuf,
+        /// Encryption passphrase (or set NONCE_CRAWLER_PASSPHRASE env var)
+        #[arg(long)]
+        passphrase: Option<String>,
     },
     /// Validate bit-parity between CPU Golden Reference and GPU backends
     RandstormValidate {
@@ -307,12 +313,18 @@ enum Commands {
         /// End block height (optional, defaults to latest)
         #[arg(long)]
         end_block: Option<u64>,
+        /// Scan last N blocks (alternative to --start-block)
+        #[arg(long)]
+        last_n_blocks: Option<u64>,
         /// Resume from checkpoint
         #[arg(long)]
         resume: bool,
         /// Encryption passphrase for private keys (default: MadMad13221!@)
         #[arg(long, env = "NONCE_CRAWLER_PASSPHRASE")]
         passphrase: Option<String>,
+        /// Rate limit delay between blocks in milliseconds (default: 50)
+        #[arg(long, default_value = "50")]
+        rate_limit_ms: u64,
     },
     /// List recovered private keys from nonce reuse database
     ///
@@ -333,6 +345,27 @@ enum Commands {
         /// Show decrypted private keys
         #[arg(long)]
         show_keys: bool,
+    },
+    /// Import brainwallet dictionary and generate addresses
+    ///
+    /// **Security:** Set BRAINWALLET_ENCRYPTION_PASSPHRASE environment variable for production use.
+    /// Default passphrase is for development/testing only.
+    BrainwalletImport {
+        /// Path to wordlist file (supports .txt, .txt.gz)
+        #[arg(long)]
+        wordlist: std::path::PathBuf,
+        /// Database path for storing results
+        #[arg(long, default_value = "targets.db")]
+        db_path: std::path::PathBuf,
+        /// Hash type: sha256-1x, sha256-1000x, sha3-256
+        #[arg(long, default_value = "sha256-1x")]
+        hash_type: String,
+        /// Address type: p2pkh-uncompressed, p2pkh-compressed, p2shwpkh, p2wpkh
+        #[arg(long, default_value = "p2pkh-compressed")]
+        address_type: String,
+        /// Dry run - don't write to database
+        #[arg(long)]
+        dry_run: bool,
     },
 }
 
@@ -602,7 +635,9 @@ fn main() -> Result<()> {
                 println!("{}", t.address);
             }
         }
-        Commands::NonceReuseRecovery { z1, z2, r, s1, s2 } => {
+        Commands::NonceReuseRecovery { z1, z2, r, s1, s2, output, passphrase } => {
+            use temporal_planetarium_lib::utils::encryption::{encrypt_private_key, DEFAULT_ENCRYPTION_PASSPHRASE};
+
             info!("Running ECDSA Nonce Reuse Recovery...");
             let z1_bytes = hex::decode(z1)?.try_into().map_err(|_| anyhow::anyhow!("z1 must be 32 bytes"))?;
             let z2_bytes = hex::decode(z2)?.try_into().map_err(|_| anyhow::anyhow!("z2 must be 32 bytes"))?;
@@ -610,13 +645,60 @@ fn main() -> Result<()> {
             let s1_bytes = hex::decode(s1)?.try_into().map_err(|_| anyhow::anyhow!("s1 must be 32 bytes"))?;
             let s2_bytes = hex::decode(s2)?.try_into().map_err(|_| anyhow::anyhow!("s2 must be 32 bytes"))?;
 
+            // Get passphrase from arg, env, or default
+            let pass = passphrase
+                .or_else(|| std::env::var("NONCE_CRAWLER_PASSPHRASE").ok())
+                .unwrap_or_else(|| {
+                    tracing::warn!("⚠️  Using default encryption passphrase. Set --passphrase or NONCE_CRAWLER_PASSPHRASE for production use.");
+                    DEFAULT_ENCRYPTION_PASSPHRASE.to_string()
+                });
+
             match temporal_planetarium_lib::scans::randstorm::forensics::recover_privkey_from_nonce_reuse(
                 &z1_bytes, &z2_bytes, &r_bytes, &s1_bytes, &s2_bytes
             ) {
                 Ok(sk) => {
                     info!("✅ SUCCESS! Private key recovered!");
-                    println!("Private Key (Hex): {}", hex::encode(sk.display_secret().to_string()));
-                    println!("WIF (Mainnet): {}", bitcoin::PrivateKey::new(sk, bitcoin::Network::Bitcoin).to_wif());
+
+                    // Convert to WIF and encrypt immediately
+                    let wif = bitcoin::PrivateKey::new(sk, bitcoin::Network::Bitcoin).to_wif();
+                    let encrypted = encrypt_private_key(&wif, &pass)?;
+
+                    // Derive address for identification
+                    let secp = bitcoin::secp256k1::Secp256k1::new();
+                    let pubkey = sk.public_key(&secp);
+                    let address = bitcoin::Address::p2pkh(
+                        bitcoin::CompressedPublicKey(pubkey),
+                        bitcoin::Network::Bitcoin
+                    );
+
+                    // Write encrypted key to file as JSON
+                    let output_data = serde_json::json!({
+                        "address": address.to_string(),
+                        "network": "mainnet",
+                        "encrypted_wif": hex::encode(&encrypted.ciphertext),
+                        "nonce": hex::encode(&encrypted.nonce),
+                        "salt": hex::encode(&encrypted.salt),
+                        "encryption": "AES-256-GCM",
+                        "kdf": "PBKDF2-HMAC-SHA256",
+                        "kdf_iterations": 100000,
+                        "recovered_from": "nonce_reuse",
+                        "timestamp": chrono::Utc::now().to_rfc3339(),
+                        "warning": "PRIVATE KEY - Handle with extreme care. Decrypt with list-recovered-keys command."
+                    });
+
+                    std::fs::write(&output, serde_json::to_string_pretty(&output_data)?)?;
+
+                    // Clear sensitive data from memory (WIF string)
+                    // Note: Rust strings are immutable, so we can't zeroize in-place
+                    // The `sk` SecretKey will be dropped and memory freed
+                    drop(wif);
+
+                    println!("🔐 Private key recovered and encrypted!");
+                    println!("📍 Address: {}", address);
+                    println!("💾 Saved to: {}", output.display());
+                    println!("");
+                    println!("⚠️  SECURITY: Private key is encrypted with AES-256-GCM.");
+                    println!("   To decrypt, use: entropy-lab list-recovered-keys --show-keys");
                 }
                 Err(e) => {
                     anyhow::bail!("Recovery failed: {}", e);
@@ -630,8 +712,10 @@ fn main() -> Result<()> {
             db,
             start_block,
             end_block,
+            last_n_blocks,
             resume,
             passphrase,
+            rate_limit_ms,
         } => {
             use temporal_planetarium_lib::utils::encryption::DEFAULT_ENCRYPTION_PASSPHRASE;
 
@@ -643,8 +727,10 @@ fn main() -> Result<()> {
                 db,
                 start_block,
                 end_block,
+                last_n_blocks,
                 resume,
                 pass,
+                Some(rate_limit_ms),
             )?;
         }
         Commands::ListRecoveredKeys {
@@ -658,6 +744,15 @@ fn main() -> Result<()> {
             let pass = passphrase.unwrap_or_else(|| DEFAULT_ENCRYPTION_PASSPHRASE.to_string());
             let output_format = format.parse::<commands::list_keys::OutputFormat>()?;
             commands::list_keys::run(db, pass, output_format, show_keys)?;
+        }
+        Commands::BrainwalletImport {
+            wordlist,
+            db_path,
+            hash_type,
+            address_type,
+            dry_run,
+        } => {
+            commands::brainwallet_import::run(wordlist, db_path, hash_type, address_type, dry_run)?;
         }
     }
 

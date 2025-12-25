@@ -23,13 +23,12 @@
 //! ```
 
 use anyhow::{Context, Result};
-use bitcoin::hashes::Hash;
 use bitcoin::{Block, Transaction};
 use bitcoincore_rpc::{Auth, Client, RpcApi};
 use indicatif::{ProgressBar, ProgressStyle};
 use std::collections::HashMap;
 use std::path::PathBuf;
-use tracing::{debug, error, info, warn};
+use tracing::{debug, info, warn};
 
 use crate::scans::randstorm::forensics::recover_privkey_from_nonce_reuse;
 use crate::utils::db::{Target, TargetDatabase};
@@ -77,6 +76,8 @@ pub struct CrawlerConfig {
     pub checkpoint_path: Option<PathBuf>,
     /// Number of blocks between checkpoints
     pub checkpoint_interval: u64,
+    /// Rate limit delay between blocks in milliseconds (0 = no limit)
+    pub rate_limit_ms: u64,
 }
 
 impl Default for CrawlerConfig {
@@ -91,6 +92,7 @@ impl Default for CrawlerConfig {
             fetch_prevouts: false,
             checkpoint_path: None,
             checkpoint_interval: 100,
+            rate_limit_ms: 50, // 50ms default to avoid overwhelming RPC
         }
     }
 }
@@ -180,6 +182,12 @@ impl NonceCrawler {
         })
     }
 
+    /// Get blockchain info from the RPC node
+    pub fn get_blockchain_info(&self) -> Result<bitcoincore_rpc::json::GetBlockchainInfoResult> {
+        self.client.get_blockchain_info()
+            .context("Failed to get blockchain info")
+    }
+
     /// Scan a range of blocks for nonce reuse
     pub fn scan_range(&mut self, start_block: u64, end_block: u64) -> Result<CrawlerStats> {
         info!(
@@ -230,6 +238,11 @@ impl NonceCrawler {
                         warn!(error = %e, "Failed to save checkpoint");
                     }
                 }
+            }
+
+            // Rate limiting to avoid overwhelming the RPC node
+            if self.config.rate_limit_ms > 0 {
+                std::thread::sleep(std::time::Duration::from_millis(self.config.rate_limit_ms));
             }
         }
 
@@ -585,5 +598,95 @@ mod tests {
         assert_eq!(config.rpc_host, "127.0.0.1");
         assert_eq!(config.rpc_port, 8332);
         assert_eq!(config.passphrase, DEFAULT_ENCRYPTION_PASSPHRASE);
+    }
+
+    // DER parsing edge case tests (Task 2.5)
+    #[test]
+    fn test_parse_der_empty_input() {
+        let result = parse_der_signature(&[]);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_parse_der_missing_marker() {
+        // Missing 0x02 prefix
+        let der = vec![0x00, 0x20, 0x01, 0x02];
+        let result = parse_der_signature(&der);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_parse_der_truncated_r() {
+        // R length says 32 but only 4 bytes provided
+        let der = vec![0x02, 0x20, 0x01, 0x02, 0x03, 0x04];
+        let result = parse_der_signature(&der);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_parse_der_missing_s_marker() {
+        // Valid R but missing S marker
+        let mut der = vec![0x02, 0x04, 0x01, 0x02, 0x03, 0x04];
+        der.push(0x00); // Wrong marker
+        let result = parse_der_signature(&der);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_parse_der_truncated_s() {
+        // Valid R, S length says 32 but truncated
+        let mut der = vec![
+            0x02, 0x04, 0x01, 0x02, 0x03, 0x04, // R
+            0x02, 0x20, 0x05, 0x06, // S truncated
+        ];
+        let result = parse_der_signature(&der);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_parse_der_with_leading_zero() {
+        // DER signatures often have leading zero for positive integers
+        let der = vec![
+            0x02, 0x21, // R length 33 (with leading zero)
+            0x00, 0x81, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f,
+            0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18, 0x19, 0x1a, 0x1b, 0x1c, 0x1d, 0x1e, 0x1f, 0x20,
+            0x02, 0x20, // S length 32
+            0x21, 0x22, 0x23, 0x24, 0x25, 0x26, 0x27, 0x28, 0x29, 0x2a, 0x2b, 0x2c, 0x2d, 0x2e, 0x2f, 0x30,
+            0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x38, 0x39, 0x3a, 0x3b, 0x3c, 0x3d, 0x3e, 0x3f, 0x40,
+        ];
+
+        let result = parse_der_signature(&der);
+        assert!(result.is_ok());
+
+        let (r, s) = result.unwrap();
+        // Leading zero should be stripped, 0x81 should be at position 31
+        assert_eq!(r[31], 0x20);
+        assert_eq!(s[0], 0x21);
+    }
+
+    #[test]
+    fn test_parse_der_minimum_valid() {
+        // Minimum valid DER meeting 8-byte requirement: 2-byte R, 2-byte S
+        let der = vec![
+            0x02, 0x02, 0x01, 0x02, // R = 2 bytes
+            0x02, 0x02, 0x03, 0x04, // S = 2 bytes
+        ];
+
+        let result = parse_der_signature(&der);
+        assert!(result.is_ok());
+
+        let (r, s) = result.unwrap();
+        assert_eq!(r[30], 0x01);
+        assert_eq!(r[31], 0x02);
+        assert_eq!(s[30], 0x03);
+        assert_eq!(s[31], 0x04);
+    }
+
+    #[test]
+    fn test_parse_der_too_short() {
+        // Less than 8 bytes should fail
+        let der = vec![0x02, 0x01, 0x01, 0x02, 0x01, 0x02]; // 6 bytes
+        let result = parse_der_signature(&der);
+        assert!(result.is_err());
     }
 }

@@ -11,7 +11,7 @@ use anyhow::{Context, Result};
 use pbkdf2::pbkdf2_hmac;
 use rand::RngCore;
 use sha2::Sha256;
-use tracing::{debug, warn};
+use tracing::debug;
 
 /// Default encryption passphrase for nonce reuse database
 /// Can be overridden via CLI flag --encryption-passphrase or NONCE_CRAWLER_PASSPHRASE env var

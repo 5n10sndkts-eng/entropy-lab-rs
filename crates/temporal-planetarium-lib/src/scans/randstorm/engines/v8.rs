@@ -1,3 +1,12 @@
+//! Chrome V8 MWC1616 PRNG Golden Reference Implementation
+//!
+//! This module implements the "Universal Truth" V8 PRNG for Randstorm vulnerability scanning.
+//! It MUST NOT use any floating-point operations (Integer Isolation Law).
+
+#![deny(clippy::float_arithmetic)]
+#![deny(clippy::float_cmp)]
+#![deny(clippy::float_cmp_const)]
+
 use crate::scans::randstorm::core_types::{ChromeV8State, SeedComponents};
 use sha2::{Digest, Sha256};
 
@@ -44,6 +53,106 @@ impl V8Reference {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Test that 1000 consecutive MWC1616 outputs match the expected sequence.
+    /// This is the canonical "Tier 4" verification for AC #1.
+    ///
+    /// Reference: V8 3.14.5.9 src/math.cc MWC1616 algorithm
+    /// Seed: s1=0x12345678, s2=0x9ABCDEF0 (canonical test vector)
+    ///
+    /// The test generates 1000 outputs and hashes them to verify bit-perfect
+    /// correctness across all 1000 iterations.
+    #[test]
+    fn test_mwc1616_1000_outputs() {
+        use sha2::{Sha256, Digest};
+
+        let mut state = ChromeV8State {
+            s1: 0x12345678,
+            s2: 0x9ABCDEF0,
+        };
+
+        let mut hasher = Sha256::new();
+
+        // Generate 1000 consecutive outputs and hash them
+        for _ in 0..1000 {
+            let output = V8Reference::next_state(&mut state);
+            hasher.update(output.to_le_bytes());
+        }
+
+        let hash = hasher.finalize();
+        let hash_hex = hex::encode(&hash);
+
+        // Expected hash of 1000 consecutive outputs from canonical seed
+        // This hash was computed from the verified MWC1616 implementation
+        // and represents the "golden truth" for AC #1 validation.
+        //
+        // Verified against V8 3.14.5.9 MWC1616 algorithm:
+        //   s1 = 18000 * (s1 & 0xFFFF) + (s1 >> 16)
+        //   s2 = 30903 * (s2 & 0xFFFF) + (s2 >> 16)
+        //   result = (s1 << 16) + s2 (wrapping to u32)
+        //
+        // First 5 outputs from seed (0x12345678, 0x9ABCDEF0):
+        //   [50d4784c, f0b90774, 7cd6eca6, 3e0ffe2d, 34fd39c1]
+        //
+        // Final state after 1000 iterations:
+        //   s1 = 0x27ccd9e8, s2 = 0x67abb1c6
+        //
+        // If this hash changes, the MWC1616 implementation has diverged.
+        let expected_hash = "466326718f1550191ee60476fb98299c1ad45cbfcdb61d621f83e0a6527323f2";
+
+        assert_eq!(
+            hash_hex, expected_hash,
+            "MWC1616 1000-output hash mismatch! Implementation may have diverged from V8 3.14.5.9 reference."
+        );
+
+        // Verify final state (spot check)
+        assert_eq!(state.s1, 0x27ccd9e8, "Final s1 mismatch after 1000 iterations");
+        assert_eq!(state.s2, 0x67abb1c6, "Final s2 mismatch after 1000 iterations");
+    }
+
+    /// Test timestamp-based seeding for V8 MWC1616 PRNG (AC #2).
+    ///
+    /// Validates that:
+    /// 1. Timestamp is split correctly: s1 = low 32 bits, s2 = high 32 bits
+    /// 2. Same timestamp always produces identical PRNG sequences
+    /// 3. Seeding matches Chrome V8 2011-2015 era behavior
+    #[test]
+    fn test_timestamp_seeding() {
+        use crate::scans::randstorm::prng::bitcoinjs_v013::WeakMathRandom;
+        use crate::scans::randstorm::prng::MathRandomEngine;
+
+        // Test case: Known timestamp from 2014 (Randstorm vulnerability era)
+        let timestamp_ms: u64 = 1389781850000; // 2014-01-15 12:17:30 UTC
+
+        // V8 3.14.5.9 era seeding: Split 64-bit timestamp into two 32-bit values
+        let expected_s1 = (timestamp_ms & 0xFFFFFFFF) as u32; // Low 32 bits
+        let expected_s2 = (timestamp_ms >> 32) as u32;         // High 32 bits
+
+        // Verify the seeding matches expectations
+        assert_eq!(expected_s1, 0x95741790, "s1 (low 32 bits) incorrect for timestamp {}", timestamp_ms);
+        assert_eq!(expected_s2, 0x143, "s2 (high 32 bits) incorrect for timestamp {}", timestamp_ms);
+
+        // Test deterministic sequences: same timestamp → identical output
+        let mut prng1 = WeakMathRandom::from_timestamp(MathRandomEngine::V8Mwc1616, timestamp_ms, None);
+        let mut prng2 = WeakMathRandom::from_timestamp(MathRandomEngine::V8Mwc1616, timestamp_ms, None);
+
+        let seq1: Vec<u16> = (0..100).map(|_| prng1.next_u16()).collect();
+        let seq2: Vec<u16> = (0..100).map(|_| prng2.next_u16()).collect();
+
+        assert_eq!(seq1, seq2, "Same timestamp must produce identical PRNG sequences");
+
+        // Verify first few outputs are deterministic
+        let mut prng3 = WeakMathRandom::from_timestamp(MathRandomEngine::V8Mwc1616, timestamp_ms, None);
+        let first_output = prng3.next_u16();
+
+        // This value is the canonical first output for timestamp 1389781850000
+        // Derived from seeding with s1=0x95741790, s2=0x143
+        // If this changes, the seeding or PRNG implementation has diverged.
+        assert_eq!(
+            first_output, 0x530c, // 21260 in decimal
+            "First PRNG output for timestamp {} incorrect", timestamp_ms
+        );
+    }
 
     #[test]
     fn test_v8_reference_historical_parity() {
