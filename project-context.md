@@ -1,7 +1,7 @@
 # Project Context: Temporal Planetarium (Entropy Lab RS)
 
-**Last Updated:** 2025-12-24
-**Version:** 0.3.0  
+**Last Updated:** 2025-12-25
+**Version:** 0.4.0  
 **Project Type:** Modular Rust Workspace (CLI + Library)  
 **Status:** Active Development / Brownfield
 
@@ -81,13 +81,21 @@ Every scanner in `src/scans/` MUST implement the `Scanner` trait:
 
 ---
 
-## Development Workflow
+## Roadmap & Progress
 
-### Build & Test
-- **GPU Build**: `cargo build --release --features "opencl wgpu"`
-- **V-Model Validation**: A dedicated `temporal-planetarium-validator` tool executes a high-concurrency sweep across all hardware backends.
-- **Tier 4 Verification**: Must pass $100\%$ of truth tokens in `tests/fixtures/randstorm_vectors.json`.
+The project has transitioned to a 7-Epic roadmap to reconcile legacy work with future milestones.
+
+### Current Status (2025-12-25)
+- **Phase 1 (MVP)**: Epics 1-5 (Core Scanning, Fingerprints, CLI, Certification, Ethics).
+- **Phase 13 (Advanced)**: Epics 6-7 (Target Intelligence, WGPU).
+- **Overall Completion**: 19% (8/43 stories).
+- **Phase 13 Completion**: 67% (8/12 stories).
+
+### Tiered Verification Gates
+- **Tier 1 (Unit)**: <30s local run.
+- **Tier 2 (Integration)**: ~5m CI run.
+- **Tier 4 (Golden)**: 100% parity with `randstorm_vectors.json`.
 
 ---
 
-**All AI Agents MUST check this document and `_bmad-output/architecture.md` before adding new scanners or modifying hardware logic.**
+**All AI Agents MUST check this document, `_bmad-output/architecture.md`, and `_bmad-output/epics.md` before adding new scanners or modifying hardware logic.**
